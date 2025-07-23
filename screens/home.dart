@@ -36,7 +36,9 @@ class _UsersScreenState extends State<UsersScreen> {
       final serverIp = await ServerConfig.getServerIp();
       if (serverIp == null) {
         setState(() => _isLoading = false);
-        throw Exception('Server IP not set. Please configure network settings.');
+        throw Exception(
+          'Server IP not set. Please configure network settings.',
+        );
       }
       final response = await http.get(
         Uri.parse('http://$serverIp:8000/api/users'),
@@ -135,12 +137,7 @@ class _UsersScreenState extends State<UsersScreen> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         automaticallyImplyLeading: false,
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 16.0),
-            child: Icon(Icons.notifications_outlined),
-          ),
-        ],
+        actions: const [Padding(padding: EdgeInsets.only(right: 16.0))],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(60.0),
           child: Padding(

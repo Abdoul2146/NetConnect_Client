@@ -7,6 +7,8 @@ import 'create_group.dart';
 import 'login_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'profile.dart';
+import 'package:http/http.dart' as http;
+import '../server_config.dart';
 
 class NetworkSettingsScreen extends StatefulWidget {
   const NetworkSettingsScreen({super.key});
@@ -74,12 +76,14 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
               onTap: () async {
                 final prefs = await SharedPreferences.getInstance();
                 final currentUsername = prefs.getString('username');
-                
+
                 if (currentUsername != null) {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => EmployeeProfileScreen(username: currentUsername),
+                      builder:
+                          (context) =>
+                              EmployeeProfileScreen(username: currentUsername),
                     ),
                   );
                 } else {
@@ -149,10 +153,25 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
             child: ElevatedButton(
               onPressed: () async {
                 print('Log out tapped');
-                // Implement logout functionality
                 final prefs = await SharedPreferences.getInstance();
+                final username = prefs.getString('username');
+                final serverIp = await ServerConfig.getServerIp();
+
+                if (username != null && serverIp != null) {
+                  // Call backend logout
+                  await http.post(
+                    Uri.parse('http://$serverIp:8000/logout'),
+                    headers: {
+                      'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: {'username': username},
+                  );
+                }
+
                 await prefs.remove('access_token');
                 await prefs.remove('username');
+                await prefs.setBool('is_online', false);
+
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (context) => const LoginScreen()),

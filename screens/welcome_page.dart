@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:netconnect/screens/login_page.dart';
 import 'package:netconnect/server_config.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class NetChatSplashScreen extends StatefulWidget {
   const NetChatSplashScreen({super.key});
@@ -13,7 +15,27 @@ class _NetChatSplashScreenState extends State<NetChatSplashScreen> {
   @override
   void initState() {
     super.initState();
+    _checkFirstTime();
+    _requestStoragePermission();
     _checkServerIp();
+  }
+
+  Future<void> _checkFirstTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    bool? seen = prefs.getBool('welcome_seen');
+    if (seen == true) {
+      // If already seen, go directly to login
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const LoginScreen()),
+      );
+    }
+    // If not seen, do nothing and show welcome page
+  }
+
+  Future<void> _requestStoragePermission() async {
+    if (await Permission.manageExternalStorage.isGranted) return;
+    await Permission.manageExternalStorage.request();
   }
 
   void _checkServerIp() async {
@@ -91,15 +113,15 @@ class _NetChatSplashScreenState extends State<NetChatSplashScreen> {
             SizedBox(
               width: 200.0,
               child: ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('welcome_seen', true); // Mark as seen
                   Navigator.pushReplacement(
                     context,
                     MaterialPageRoute(
                       builder: (context) => const LoginScreen(),
                     ),
                   );
-                  // Add your start button functionality here
-                  // print('Start button pressed');
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: Colors.black,

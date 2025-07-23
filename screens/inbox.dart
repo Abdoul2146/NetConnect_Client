@@ -11,25 +11,32 @@ import 'package:netconnect/screens/profile.dart';
 import 'package:intl/intl.dart';
 import 'package:netconnect/server_config.dart';
 
+class ForwardTarget {
+  final String name; // username or group name
+  final bool isGroup;
+
+  ForwardTarget(this.name, this.isGroup);
+}
+
 String formatChatTimestamp(String isoString) {
   final dateTime = DateTime.parse(isoString).toLocal();
   final now = DateTime.now();
 
-  // Check if the message is from today
   if (dateTime.year == now.year &&
       dateTime.month == now.month &&
       dateTime.day == now.day) {
-    // Show only the time (e.g., 20:45)
+    // 24-hour format
     return DateFormat('HH:mm').format(dateTime);
   } else {
-    // Show only the date (e.g., 2025-07-08 or Jul 8)
     return DateFormat('yyyy-MM-dd').format(dateTime);
-    // Or for a shorter format: DateFormat('MMM d').format(dateTime)
   }
 }
 
 class InboxScreen extends StatefulWidget {
-  const InboxScreen({super.key});
+  final bool selectMode;
+
+  const InboxScreen({Key? key, this.selectMode = false}) : super(key: key);
+
   @override
   State<InboxScreen> createState() => _InboxScreenState();
 }
@@ -43,6 +50,8 @@ class _InboxScreenState extends State<InboxScreen>
   List<ChatMessage> _chats = []; // Store fetched chats
   int _selectedIndex = 2; // Default to Inbox tab in bottom navigation
   late String _currentUsername;
+  final Set<String> _selectedUsernames = {}; // For selectMode
+  Set<String> _activeUsers = {}; // Track active users
 
   @override
   void initState() {
@@ -59,7 +68,11 @@ class _InboxScreenState extends State<InboxScreen>
         final serverIp = await ServerConfig.getServerIp();
         if (serverIp == null) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Server IP not set. Please configure network settings.')),
+            const SnackBar(
+              content: Text(
+                'Server IP not set. Please configure network settings.',
+              ),
+            ),
           );
           return;
         }
@@ -74,6 +87,27 @@ class _InboxScreenState extends State<InboxScreen>
                   msg['type'] == 'direct_message' ||
                   msg['type'] == 'group_message') {
                 onNewMessage(msg);
+              } else if (msg['type'] == 'user_active' ||
+                  msg['type'] == 'status') {
+                setState(() {
+                  if (msg['status'] == 'online' || msg['active'] == true) {
+                    _activeUsers.add(msg['username']);
+                  } else {
+                    _activeUsers.remove(msg['username']);
+                  }
+                });
+              } else if (msg['type'] == 'message_status') {
+                // Update status for the relevant chat
+                final status = msg['status'];
+                setState(() {
+                  for (var chat in _chats) {
+                    // You may need to map message_id to chat here if you have that info
+                    if (chat.username == msg['to'] ||
+                        chat.username == msg['from']) {
+                      chat.status = status;
+                    }
+                  }
+                });
               }
             } catch (e, stack) {
               debugPrint('WebSocket message error: $e\n$stack');
@@ -109,7 +143,11 @@ class _InboxScreenState extends State<InboxScreen>
     final serverIp = await ServerConfig.getServerIp();
     if (serverIp == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Server IP not set. Please configure network settings.')),
+        const SnackBar(
+          content: Text(
+            'Server IP not set. Please configure network settings.',
+          ),
+        ),
       );
       return;
     }
@@ -195,9 +233,10 @@ class _InboxScreenState extends State<InboxScreen>
   void onNewMessage(Map<String, dynamic> msg) {
     print('🔄 WebSocket message received: $msg');
     setState(() {
-      bool isGroup = msg['chat_type'] == 'group' ||
-                   msg['is_group'] == true ||
-                   msg['type'] == 'group_message'; // extra check for group_message type
+      bool isGroup =
+          msg['chat_type'] == 'group' ||
+          msg['is_group'] == true ||
+          msg['type'] == 'group_message'; // extra check for group_message type
 
       String identifier;
       String displayName;
@@ -216,8 +255,9 @@ class _InboxScreenState extends State<InboxScreen>
         displayName = identifier;
       }
 
-      int idx = _chats.indexWhere((c) =>
-        c.isGroup == isGroup && c.username == identifier);
+      int idx = _chats.indexWhere(
+        (c) => c.isGroup == isGroup && c.username == identifier,
+      );
 
       String preview =
           msg['last_message'] ??
@@ -227,12 +267,15 @@ class _InboxScreenState extends State<InboxScreen>
               : "[New Message]");
 
       String timestamp = msg['timestamp'] ?? DateTime.now().toIso8601String();
+      String? status = msg['status'];
 
       if (idx != -1) {
         _chats[idx].lastMessage = preview;
-        _chats[idx].unreadCount = msg['unread_count'] ?? (_chats[idx].unreadCount + 1);
+        _chats[idx].unreadCount =
+            msg['unread_count'] ?? (_chats[idx].unreadCount + 1);
         _chats[idx].isRead = _chats[idx].unreadCount == 0;
         _chats[idx].timeAgo = timestamp;
+        if (status != null) _chats[idx].status = status;
       } else {
         _chats.insert(
           0,
@@ -245,6 +288,7 @@ class _InboxScreenState extends State<InboxScreen>
             isGroup: isGroup,
             isRead: false,
             unreadCount: msg['unread_count'] ?? 1,
+            status: status,
           ),
         );
       }
@@ -259,17 +303,30 @@ class _InboxScreenState extends State<InboxScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'NetConnect',
+          'Inbox',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.only(right: 16.0),
-            child: Text(
-              'Inbox',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 22),
+        actions: [
+          if (widget.selectMode)
+            TextButton(
+              child: const Text(
+                'Forward',
+                style: TextStyle(color: Colors.blue),
+              ),
+              onPressed: () {
+                // --- PATCH: Return ForwardTarget list instead of just usernames ---
+                final selectedTargets =
+                    _chats
+                        .where(
+                          (chat) => _selectedUsernames.contains(chat.username),
+                        )
+                        .map(
+                          (chat) => ForwardTarget(chat.username, chat.isGroup),
+                        )
+                        .toList();
+                Navigator.pop(context, selectedTargets);
+              },
             ),
-          ),
         ],
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(110.0),
@@ -376,6 +433,8 @@ class _InboxScreenState extends State<InboxScreen>
       itemCount: chats.length,
       itemBuilder: (context, index) {
         final chat = chats[index];
+        final isSelected = _selectedUsernames.contains(chat.username);
+
         return ListTile(
           leading: GestureDetector(
             onTap: () {
@@ -383,69 +442,164 @@ class _InboxScreenState extends State<InboxScreen>
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => EmployeeProfileScreen(username: chat.username),
+                    builder:
+                        (context) =>
+                            EmployeeProfileScreen(username: chat.username),
                   ),
                 );
               }
             },
-            child: CircleAvatar(backgroundImage: NetworkImage(chat.avatarUrl)),
+            child: Stack(
+              children: [
+                CircleAvatar(backgroundImage: NetworkImage(chat.avatarUrl)),
+                if (_activeUsers.contains(chat.username))
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
           title: Text(
             chat.name,
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
-          subtitle: Text(chat.lastMessage, overflow: TextOverflow.ellipsis),
-          trailing: Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            mainAxisAlignment: MainAxisAlignment.center,
+          subtitle: Row(
             children: [
-              Text(
-                formatChatTimestamp(chat.timeAgo),
-                style: TextStyle(color: Colors.grey[600], fontSize: 12.0),
-              ),
-              if (chat.unreadCount > 0)
-                Container(
-                  margin: const EdgeInsets.only(top: 4),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.redAccent,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${chat.unreadCount}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
+              // Only show status icon if this is a direct chat and I am the sender of the last message
+              if (!chat.isGroup &&
+                  chat.status != null &&
+                  chat.lastMessage.isNotEmpty &&
+                  chat.username != _currentUsername)
+                Padding(
+                  padding: const EdgeInsets.only(right: 2.0),
+                  child: Icon(
+                    chat.status == 'seen'
+                        ? Icons.done_all
+                        : chat.status == 'sent'
+                        ? Icons.check
+                        : Icons.access_time,
+                    size: 16,
+                    color: chat.status == 'seen' ? Colors.blue : Colors.grey,
                   ),
                 ),
+              if (chat.lastMessage.toLowerCase().contains('.png') ||
+                  chat.lastMessage.toLowerCase().contains('.jpg') ||
+                  chat.lastMessage.toLowerCase().contains('.jpeg') ||
+                  chat.lastMessage.toLowerCase().contains('.gif') ||
+                  chat.lastMessage.toLowerCase().contains('.bmp') ||
+                  chat.lastMessage.toLowerCase().contains('.webp'))
+                Padding(
+                  padding: const EdgeInsets.only(right: 4.0),
+                  child: Icon(Icons.image, size: 16, color: Colors.blueGrey),
+                )
+              else if (chat.lastMessage.toLowerCase().contains('.pdf') ||
+                  chat.lastMessage.toLowerCase().contains('.docx') ||
+                  chat.lastMessage.toLowerCase().contains('.doc') ||
+                  chat.lastMessage.toLowerCase().contains('.xls') ||
+                  chat.lastMessage.toLowerCase().contains('.ppt') ||
+                  chat.lastMessage.toLowerCase().contains('.zip') ||
+                  chat.lastMessage.toLowerCase().contains('.rar'))
+                Padding(
+                  padding: const EdgeInsets.only(right: 4.0),
+                  child: Icon(
+                    Icons.insert_drive_file,
+                    size: 16,
+                    color: Colors.blueGrey,
+                  ),
+                ),
+              Expanded(
+                child: Text(chat.lastMessage, overflow: TextOverflow.ellipsis),
+              ),
             ],
           ),
-          onTap: () async {
-            await markChatAsRead(chat.username, chat.isGroup);
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder:
-                    (context) => ChatScreen(
-                      username: chat.username,
-                      avatarUrl: chat.avatarUrl,
-                      groupName: chat.name,
-                      isGroup: chat.isGroup,
-                      onNewMessage: (msg) => onNewMessage(msg),
-                    ),
-              ),
-            );
-            // Uncomment the line below if you want to mark the chat as read on tap
-            setState(() {
-              chat.isRead = true;
-              chat.unreadCount = 0;
-            });
-          },
+          trailing:
+              widget.selectMode
+                  ? Checkbox(
+                    value: isSelected,
+                    onChanged: (checked) {
+                      setState(() {
+                        if (checked == true) {
+                          _selectedUsernames.add(chat.username);
+                        } else {
+                          _selectedUsernames.remove(chat.username);
+                        }
+                      });
+                    },
+                  )
+                  : Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        formatChatTimestamp(chat.timeAgo),
+                        style: TextStyle(
+                          color: Colors.grey[600],
+                          fontSize: 12.0,
+                        ),
+                      ),
+                      if (chat.unreadCount > 0)
+                        Container(
+                          margin: const EdgeInsets.only(top: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.redAccent,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            '${chat.unreadCount}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+          onTap:
+              widget.selectMode
+                  ? () {
+                    setState(() {
+                      if (isSelected) {
+                        _selectedUsernames.remove(chat.username);
+                      } else {
+                        _selectedUsernames.add(chat.username);
+                      }
+                    });
+                  }
+                  : () async {
+                    await markChatAsRead(chat.username, chat.isGroup);
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder:
+                            (context) => ChatScreen(
+                              username: chat.username,
+                              avatarUrl: chat.avatarUrl,
+                              groupName: chat.name,
+                              isGroup: chat.isGroup,
+                              onNewMessage: (msg) => onNewMessage(msg),
+                            ),
+                      ),
+                    );
+                    setState(() {
+                      chat.isRead = true;
+                      chat.unreadCount = 0;
+                    });
+                  },
         );
       },
     );
@@ -461,6 +615,7 @@ class ChatMessage {
   final bool isGroup;
   bool isRead;
   int unreadCount;
+  String? status;
 
   ChatMessage({
     required this.name,
@@ -471,6 +626,7 @@ class ChatMessage {
     required this.isGroup,
     this.isRead = false,
     this.unreadCount = 0,
+    this.status,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
@@ -483,6 +639,7 @@ class ChatMessage {
       isGroup: json['is_group'],
       isRead: json['is_read'] ?? false,
       unreadCount: json['unread_count'] ?? 0,
+      status: json['status'],
     );
   }
 }

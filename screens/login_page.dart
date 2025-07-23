@@ -36,7 +36,11 @@ class _LoginScreenState extends State<LoginScreen> {
     final serverIp = await ServerConfig.getServerIp();
     if (serverIp == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Server IP not set. Please configure network settings.')),
+        const SnackBar(
+          content: Text(
+            'Server IP not set. Please configure network settings.',
+          ),
+        ),
       );
       setState(() => _isLoading = false);
       return;
@@ -60,6 +64,7 @@ class _LoginScreenState extends State<LoginScreen> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('access_token', token);
         await prefs.setString('username', _usernameController.text);
+        await prefs.setBool('is_online', true);
 
         ScaffoldMessenger.of(
           context,
