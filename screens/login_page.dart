@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:netconnect/screens/Sign_up.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:netconnect/screens/home.dart';
+import 'package:netconnect/screens/home.dart'; // Assuming UsersScreen is the 'home' screen
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:netconnect/server_config.dart';
+import 'package:provider/provider.dart'; // NEW: Import provider for WebSocketProvider
+import 'package:netconnect/screens/websocket_provider.dart'; // NEW: Import your WebSocketProvider
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -19,7 +21,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _passwordController = TextEditingController();
 
   bool _isLoading = false;
-
   bool _obscurePassword = true;
 
   void _togglePasswordVisibility() {
@@ -35,13 +36,15 @@ class _LoginScreenState extends State<LoginScreen> {
 
     final serverIp = await ServerConfig.getServerIp();
     if (serverIp == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Server IP not set. Please configure network settings.',
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Server IP not set. Please configure network settings.',
+            ),
           ),
-        ),
-      );
+        );
+      }
       setState(() => _isLoading = false);
       return;
     }
@@ -60,31 +63,48 @@ class _LoginScreenState extends State<LoginScreen> {
       if (response.statusCode == 200) {
         final resBody = jsonDecode(response.body);
         final token = resBody['access_token'];
+        final username =
+            _usernameController.text; // Get username for shared_preferences
 
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('access_token', token);
-        await prefs.setString('username', _usernameController.text);
-        await prefs.setBool('is_online', true);
+        await prefs.setString('username', username); // Save username
+        // Removed: await prefs.setBool('is_online', true); as backend and WebSocketProvider manage this
 
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Login successful!')));
-        // TODO: Navigate to the next screen after login
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => const UsersScreen()),
-        );
+        // --- Crucial Change Here: Connect WebSocket after successful login ---
+        // Get the WebSocketProvider instance and call its connect method
+        // listen: false because we are only calling a method, not rebuilding on changes.
+        if (mounted) {
+          // Ensure context is valid before accessing Provider
+          Provider.of<WebSocketProvider>(context, listen: false).connect();
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Login successful!')));
+          // Navigate to the next screen after login using named route
+          // Assuming UsersScreen corresponds to the '/home' route defined in main.dart
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const UsersScreen()),
+          );
+        }
       } else {
         final resBody = jsonDecode(response.body);
         final errorMsg = resBody['detail'] ?? 'Login failed';
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(errorMsg)));
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(errorMsg)));
+        }
       }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     } finally {
       setState(() => _isLoading = false);
     }
@@ -115,12 +135,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     const Text('Don\'t have an account?'),
                     TextButton(
                       onPressed: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const SignUpScreen(),
-                          ),
-                        );
+                        if (mounted) {
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const SignUpScreen(),
+                            ),
+                          );
+                        }
                       },
                       child: const Text(
                         'Sign up',
@@ -210,5 +232,12 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
       ),
     );
+  }
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 }

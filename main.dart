@@ -2,11 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:netconnect/screens/welcome_page.dart';
 import 'package:netconnect/screens/theme_provider.dart';
 import 'package:provider/provider.dart';
+// NEW: Import your WebSocketProvider
+import 'package:netconnect/screens/websocket_provider.dart';
 
 void main() {
   runApp(
-    ChangeNotifierProvider(
-      create: (context) => ThemeProvider(),
+    // NEW: Use MultiProvider to provide both ThemeProvider and WebSocketProvider
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (context) => ThemeProvider()),
+        ChangeNotifierProvider(
+          create: (context) => WebSocketProvider(),
+        ), // NEW: Provide WebSocketProvider
+      ],
       child: const MyApp(),
     ),
   );
@@ -17,6 +25,7 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Consumer for ThemeProvider remains
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
         return MaterialApp(
@@ -29,7 +38,6 @@ class MyApp extends StatelessWidget {
               seedColor: Colors.blueGrey,
               brightness: Brightness.light,
             ),
-            // primarySwatch: Colors.blueGrey,
             appBarTheme: AppBarTheme(
               backgroundColor: Colors.white, // White background
               foregroundColor: Colors.black, // Black text/icons
@@ -46,13 +54,13 @@ class MyApp extends StatelessWidget {
             brightness: Brightness.dark,
             useMaterial3: false, // <-- Switch to Material 2
             colorScheme: ColorScheme.fromSeed(
-            seedColor: Colors.blueGrey,
-            brightness: Brightness.dark,
-            primary: Colors.blueGrey,    
-            onPrimary: Colors.white,
-            surface: Colors.blueGrey, // <-- Add this
-            onSurface: Colors.white,  // <-- And this
-          ),
+              seedColor: Colors.blueGrey,
+              brightness: Brightness.dark,
+              primary: Colors.blueGrey,
+              onPrimary: Colors.white,
+              surface: Colors.blueGrey, // <-- Add this
+              onSurface: Colors.white, // <-- And this
+            ),
 
             scaffoldBackgroundColor: const Color(0xFF18191A),
             appBarTheme: const AppBarTheme(
@@ -65,27 +73,28 @@ class MyApp extends StatelessWidget {
               titleTextStyle: TextStyle(color: Colors.white, fontSize: 20),
               contentTextStyle: TextStyle(color: Colors.white70, fontSize: 16),
             ),
-  elevatedButtonTheme: ElevatedButtonThemeData(
-    style: ButtonStyle(
-      backgroundColor: WidgetStateProperty.all(Colors.blueGrey),
-      foregroundColor: WidgetStateProperty.all(Colors.white),
-      padding: WidgetStateProperty.all(
-        const EdgeInsets.symmetric(vertical: 12.0),
-      ),
-    ),
-  ),          bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+            elevatedButtonTheme: ElevatedButtonThemeData(
+              style: ButtonStyle(
+                backgroundColor: WidgetStateProperty.all(Colors.blueGrey),
+                foregroundColor: WidgetStateProperty.all(Colors.white),
+                padding: WidgetStateProperty.all(
+                  const EdgeInsets.symmetric(vertical: 12.0),
+                ),
+              ),
+            ),
+            bottomNavigationBarTheme: const BottomNavigationBarThemeData(
               backgroundColor: Color(0xFF242526),
               selectedItemColor: Colors.white,
               unselectedItemColor: Colors.grey,
-              selectedIconTheme:  IconThemeData(color: Colors.white),
-              unselectedIconTheme:  IconThemeData(color: Colors.grey),
-              selectedLabelStyle:  TextStyle(color: Colors.white),
-              unselectedLabelStyle:  TextStyle(color: Colors.grey),
+              selectedIconTheme: IconThemeData(color: Colors.white),
+              unselectedIconTheme: IconThemeData(color: Colors.grey),
+              selectedLabelStyle: TextStyle(color: Colors.white),
+              unselectedLabelStyle: TextStyle(color: Colors.grey),
             ),
           ),
           themeMode: themeProvider.themeMode,
-          home:
-              const NetChatSplashScreen(), // Set the SplashScreen as the initial screen
+          // RETAINED: Your NetChatSplashScreen remains the home
+          home: const NetChatSplashScreen(),
         );
       },
     );

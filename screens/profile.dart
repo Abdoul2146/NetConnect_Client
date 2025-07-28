@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'edit_profile.dart';
-import 'package:netconnect/screens/chat_screen.dart';
-import 'package:netconnect/server_config.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:provider/provider.dart'; // NEW: Import provider
+import 'package:netconnect/screens/websocket_provider.dart'; // NEW: Import your WebSocketProvider
+
+import 'edit_profile.dart'; // Make sure this path is correct
+import 'package:netconnect/screens/chat_screen.dart'; // Make sure this path is correct
+import 'package:netconnect/server_config.dart'; // Make sure this path is correct
 
 class EmployeeProfileScreen extends StatefulWidget {
   final String?
@@ -22,14 +24,15 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
   bool isLoading = true;
   bool isCurrentUser = false;
   String? loggedInUsername;
-  Set<String> _activeUsers = {};
-  late WebSocketChannel _channel;
+
+  // REMOVED: bool _isProfileUserOnline = false; // Status will now come from WebSocketProvider
+  // REMOVED: late WebSocketChannel _channel;
+  // REMOVED: Timer? _heartbeatTimer;
 
   @override
   void initState() {
     super.initState();
-    _initUser();
-    _initWebSocket();
+    _initUserAndFetchProfile(); // This now only fetches profile data
   }
 
   Future<String?> getStoredToken() async {
@@ -37,39 +40,20 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
     return prefs.getString('access_token');
   }
 
-  void _initUser() async {
+  void _initUserAndFetchProfile() async {
     final prefs = await SharedPreferences.getInstance();
     loggedInUsername = prefs.getString('username');
     setState(() {
       isCurrentUser =
           (widget.username == null || widget.username == loggedInUsername);
     });
-    fetchProfile();
+    await fetchProfile(); // Fetch profile data
+    // REMOVED: _initWebSocket(); // WebSocket initialization is now handled globally by WebSocketProvider
   }
 
-  void _initWebSocket() async {
-    final prefs = await SharedPreferences.getInstance();
-    final username = prefs.getString('username');
-    final token = prefs.getString('access_token');
-    final serverIp = await ServerConfig.getServerIp();
-    if (username != null && token != null && serverIp != null) {
-      _channel = WebSocketChannel.connect(
-        Uri.parse('ws://$serverIp:8000/ws/$username?token=$token'),
-      );
-      _channel.stream.listen((data) {
-        final msg = json.decode(data);
-        if (msg['type'] == 'user_active' || msg['type'] == 'status') {
-          setState(() {
-            if (msg['status'] == 'online' || msg['active'] == true) {
-              _activeUsers.add(msg['username']);
-            } else {
-              _activeUsers.remove(msg['username']);
-            }
-          });
-        }
-      });
-    }
-  }
+  // REMOVED: _initWebSocket method (its logic is now in WebSocketProvider)
+  // REMOVED: _startHeartbeat method
+  // REMOVED: _stopHeartbeat method
 
   Future<void> fetchProfile() async {
     try {
@@ -80,9 +64,11 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
         setState(() {
           isLoading = false;
         });
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('Please login first')));
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Please login first')));
+        }
         return;
       }
 
@@ -91,15 +77,18 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
         setState(() {
           isLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Server IP not set. Please configure network settings.',
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Server IP not set. Please configure network settings.',
+              ),
             ),
-          ),
-        );
+          );
+        }
         return;
       }
+
       final response = await http.get(
         Uri.parse('http://$serverIp:8000/profile/$usernameToFetch'),
         headers: {
@@ -112,29 +101,52 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
         setState(() {
           profile = json.decode(response.body);
           isLoading = false;
+          // REMOVED: _isProfileUserOnline = profile!['is_online'] ?? false;
+          // The WebSocketProvider will manage the real-time status dynamically.
+          // The initial fetch no longer sets the UI status directly.
         });
       } else {
         setState(() {
           isLoading = false;
+          // REMOVED: _isProfileUserOnline = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: ${response.statusCode}')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: ${response.statusCode}')),
+          );
+        }
       }
     } catch (e) {
       setState(() {
         isLoading = false;
+        // REMOVED: _isProfileUserOnline = false;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Network error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Network error: $e')));
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // NEW: Get the WebSocketProvider instance
+    final webSocketProvider = Provider.of<WebSocketProvider>(context);
+
+    // NEW: Determine the online status of the profile user from the provider
+    bool isProfileUserOnline = false;
+    if (profile != null && profile!['username'] != null) {
+      isProfileUserOnline = webSocketProvider.isUserOnline(
+        profile!['username'],
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
+        title: Text(
+          profile?['name'] ?? 'Profile',
+        ), // Set app bar title based on profile name
         actions: [
           // Only show edit button for current user
           if (isCurrentUser)
@@ -152,7 +164,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                   ),
                 );
                 if (updated == true) {
-                  fetchProfile();
+                  fetchProfile(); // Re-fetch profile if updated
                 }
               },
             ),
@@ -196,7 +208,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                             height: 8.0,
                             decoration: BoxDecoration(
                               color:
-                                  _activeUsers.contains(profile!['username'])
+                                  isProfileUserOnline // NEW: Use status from provider
                                       ? Colors.green
                                       : Colors.grey,
                               shape: BoxShape.circle,
@@ -204,7 +216,7 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                           ),
                           const SizedBox(width: 4.0),
                           Text(
-                            _activeUsers.contains(profile!['username'])
+                            isProfileUserOnline // NEW: Use status from provider
                                 ? 'Online'
                                 : 'Offline',
                             style: const TextStyle(color: Colors.grey),
@@ -224,7 +236,6 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                           child: ElevatedButton(
                             onPressed: () {
                               final username = profile?['username'];
-                              // Provide a default avatar if missing
                               final avatarUrl =
                                   (profile?['avatar_url'] as String?)
                                               ?.isNotEmpty ==
@@ -233,11 +244,13 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                                       : 'https://via.placeholder.com/300/CCCCCC/000000?Text=Employee';
 
                               if (username == null) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: Text('User data is incomplete'),
-                                  ),
-                                );
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('User data is incomplete'),
+                                    ),
+                                  );
+                                }
                                 return;
                               }
 
@@ -292,7 +305,9 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
 
   @override
   void dispose() {
-    _channel.sink.close();
+    // REMOVED: _heartbeatTimer?.cancel();
+    // REMOVED: _channel.sink.close();
+    // WebSocketProvider manages the connection and timer globally.
     super.dispose();
   }
 }

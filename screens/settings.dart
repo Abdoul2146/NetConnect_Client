@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'profile.dart';
 import 'package:http/http.dart' as http;
 import '../server_config.dart';
+import 'package:netconnect/screens/notice_board.dart';
 
 class NetworkSettingsScreen extends StatefulWidget {
   const NetworkSettingsScreen({super.key});
@@ -17,7 +18,7 @@ class NetworkSettingsScreen extends StatefulWidget {
 }
 
 class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
-  int _selectedIndex = 3; // Set initial index to Settings
+  int _selectedIndex = 4; // Set initial index to Settings
 
   void _onItemTapped(int index) {
     setState(() {
@@ -35,13 +36,18 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
           MaterialPageRoute(builder: (context) => const CreateGroupScreen()),
         );
       } else if (index == 2) {
+        print('Feed tapped');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const NoticeBoardPage()),
+        );
+      } else if (index == 3) {
         print('Inbox Tapped');
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const InboxScreen()),
         );
-      }
-      if (index == 3) {
+      } else if (index == 4) {
         print('Settings Tapped');
         // This is the current screen, no need to navigate
       }
@@ -199,6 +205,7 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
             icon: Icon(Icons.add_circle_outline),
             label: 'New Group',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.feed), label: 'Feed'),
           BottomNavigationBarItem(
             icon: Icon(Icons.chat_bubble_outline),
             label: 'Inbox',

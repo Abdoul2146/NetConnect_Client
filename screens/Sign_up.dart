@@ -34,7 +34,11 @@ class _SignUpScreenState extends State<SignUpScreen> {
       final serverIp = await ServerConfig.getServerIp();
       if (serverIp == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Server IP not set. Please configure network settings.')),
+          const SnackBar(
+            content: Text(
+              'Server IP not set. Please configure network settings.',
+            ),
+          ),
         );
         return;
       }
@@ -232,6 +236,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       minimumSize: const Size(double.infinity, 48.0),
                       backgroundColor: Color(0xFF000000),
                       foregroundColor: Color(0xFFFFFFFF),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20.0),
+                      ),
                     ),
                     child: const Text(
                       'Sign Up',

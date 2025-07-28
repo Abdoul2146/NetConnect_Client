@@ -6,10 +6,13 @@ import 'home.dart';
 import 'settings.dart';
 import 'package:netconnect/screens/chat_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
+// REMOVED: import 'package:web_socket_channel/web_socket_channel.dart'; // WebSocket management moved to Provider
 import 'package:netconnect/screens/profile.dart';
 import 'package:intl/intl.dart';
 import 'package:netconnect/server_config.dart';
+import 'package:netconnect/screens/notice_board.dart';
+import 'package:provider/provider.dart'; // NEW: Import provider
+import 'package:netconnect/screens/websocket_provider.dart'; // NEW: Import your WebSocketProvider
 
 class ForwardTarget {
   final String name; // username or group name
@@ -43,15 +46,16 @@ class InboxScreen extends StatefulWidget {
 
 class _InboxScreenState extends State<InboxScreen>
     with SingleTickerProviderStateMixin {
-  late WebSocketChannel _channel;
+  // REMOVED: late WebSocketChannel _channel; // WebSocket management moved to Provider
   late TabController _tabController;
   final TextEditingController _searchController = TextEditingController();
   late Future<List<ChatMessage>> _chatsFuture;
   List<ChatMessage> _chats = []; // Store fetched chats
-  int _selectedIndex = 2; // Default to Inbox tab in bottom navigation
-  late String _currentUsername;
+  int _selectedIndex = 3; // Default to Inbox tab in bottom navigation
+  late String
+  _currentUsername; // RETAINED: Used for determining 'isMe' for last message status
   final Set<String> _selectedUsernames = {}; // For selectMode
-  Set<String> _activeUsers = {}; // Track active users
+  // REMOVED: Set<String> _activeUsers = {}; // Active users now managed by WebSocketProvider
 
   @override
   void initState() {
@@ -59,71 +63,35 @@ class _InboxScreenState extends State<InboxScreen>
     _tabController = TabController(length: 3, vsync: this);
     _chatsFuture = fetchChats();
 
+    // The entire WebSocket connection and status listener logic moved out.
+    // The global WebSocketProvider handles this now.
     Future.microtask(() async {
       final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('access_token');
-      final username = prefs.getString('username');
-      if (token != null && username != null) {
-        _currentUsername = username;
-        final serverIp = await ServerConfig.getServerIp();
-        if (serverIp == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Server IP not set. Please configure network settings.',
-              ),
-            ),
-          );
-          return;
+      _currentUsername = prefs.getString('username') ?? 'Unknown';
+      // No WebSocket connection setup here, it's done once in main.dart / splash screen.
+      // This is primarily for the _currentUsername for message status display.
+    });
+
+    // NEW: Listen to the WebSocketProvider's stream for message updates
+    // This is crucial for updating chat previews in real-time
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<WebSocketProvider>(
+        context,
+        listen: false,
+      ).incomingMessages.listen((msg) {
+        // This listener will now receive all messages (direct, group, status, etc.)
+        // from the central WebSocketProvider.
+        // We only care about chat preview updates here.
+        if (msg['type'] == 'chat_preview_update' ||
+            msg['type'] == 'direct_message' ||
+            msg['type'] == 'group_message' ||
+            msg['type'] == 'message_status') {
+          // message_status for sender's status
+          onNewMessage(msg); // Use the existing onNewMessage logic
         }
-        _channel = WebSocketChannel.connect(
-          Uri.parse('ws://$serverIp:8000/ws/$username?token=$token'),
-        );
-        _channel.stream.listen(
-          (data) {
-            try {
-              final msg = json.decode(data);
-              if (msg['type'] == 'chat_preview_update' ||
-                  msg['type'] == 'direct_message' ||
-                  msg['type'] == 'group_message') {
-                onNewMessage(msg);
-              } else if (msg['type'] == 'user_active' ||
-                  msg['type'] == 'status') {
-                setState(() {
-                  if (msg['status'] == 'online' || msg['active'] == true) {
-                    _activeUsers.add(msg['username']);
-                  } else {
-                    _activeUsers.remove(msg['username']);
-                  }
-                });
-              } else if (msg['type'] == 'message_status') {
-                // Update status for the relevant chat
-                final status = msg['status'];
-                setState(() {
-                  for (var chat in _chats) {
-                    // You may need to map message_id to chat here if you have that info
-                    if (chat.username == msg['to'] ||
-                        chat.username == msg['from']) {
-                      chat.status = status;
-                    }
-                  }
-                });
-              }
-            } catch (e, stack) {
-              debugPrint('WebSocket message error: $e\n$stack');
-            }
-          },
-          onError: (error) {
-            debugPrint('WebSocket error: $error');
-            // Optionally show a snackbar or dialog
-          },
-          onDone: () {
-            debugPrint('WebSocket connection closed');
-            // Optionally try to reconnect here
-          },
-          cancelOnError: true,
-        );
-      }
+        // User active/status messages are handled by the WebSocketProvider itself,
+        // and InboxScreen will get status via Provider.of<WebSocketProvider>(context) in build.
+      });
     });
   }
 
@@ -131,7 +99,7 @@ class _InboxScreenState extends State<InboxScreen>
   void dispose() {
     _tabController.dispose();
     _searchController.dispose();
-    _channel.sink.close();
+    // REMOVED: _channel.sink.close(); // WebSocket management moved to Provider
     super.dispose();
   }
 
@@ -142,13 +110,16 @@ class _InboxScreenState extends State<InboxScreen>
 
     final serverIp = await ServerConfig.getServerIp();
     if (serverIp == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Server IP not set. Please configure network settings.',
+      if (mounted) {
+        // Added mounted check
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Server IP not set. Please configure network settings.',
+            ),
           ),
-        ),
-      );
+        );
+      }
       return;
     }
 
@@ -210,16 +181,22 @@ class _InboxScreenState extends State<InboxScreen>
           MaterialPageRoute(builder: (context) => const UsersScreen()),
         );
       } else if (index == 1) {
-        print('New Group Tapped');
+        print('Add Group Tapped');
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const CreateGroupScreen()),
         );
       } else if (index == 2) {
-        print('Inbox Tapped');
-        // Already on Inbox screen
+        print('Feed tapped');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const NoticeBoardPage()),
+        );
       } else if (index == 3) {
+        print('Inbox Tapped');
+      } else if (index == 4) {
         print('Settings Tapped');
+        // This is the current screen, no need to navigate
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -230,76 +207,111 @@ class _InboxScreenState extends State<InboxScreen>
     });
   }
 
+  // MODIFIED: onNewMessage to also handle 'status' messages if needed, and ensure correct sorting
   void onNewMessage(Map<String, dynamic> msg) {
-    print('🔄 WebSocket message received: $msg');
+    print('🔄 WebSocket message received in Inbox: $msg');
     setState(() {
-      bool isGroup =
-          msg['chat_type'] == 'group' ||
-          msg['is_group'] == true ||
-          msg['type'] == 'group_message'; // extra check for group_message type
+      // Handle message status updates for sender's last message status icon
+      if (msg['type'] == 'message_status') {
+        final status = msg['status'];
+        final String? fromUser =
+            msg['from']; // The sender of the original message
+        final String? toUser =
+            msg['to']; // The receiver of the original message
 
-      String identifier;
-      String displayName;
+        // Find the chat affected by this status change
+        int chatIdx = _chats.indexWhere((chat) {
+          // If it's a direct chat and the sender or receiver of the status update matches this chat
+          return !chat.isGroup &&
+              (chat.username == fromUser || chat.username == toUser);
+        });
 
-      if (isGroup) {
-        // Always use the group name as identifier and display name
-        identifier = (msg['group'] ?? msg['chat_id'] ?? '').toString();
-        displayName = identifier;
-      } else {
-        // For direct messages, use the other user's username
-        if (msg['from'] == _currentUsername) {
-          identifier = (msg['to'] ?? '');
-        } else {
-          identifier = (msg['from'] ?? '');
+        if (chatIdx != -1) {
+          // If it's *my* message that received a status update
+          if (_chats[chatIdx].username == toUser &&
+              _currentUsername == fromUser) {
+            // I sent, they received
+            _chats[chatIdx].status = status; // Update chat preview status
+          }
         }
-        displayName = identifier;
-      }
-
-      int idx = _chats.indexWhere(
-        (c) => c.isGroup == isGroup && c.username == identifier,
-      );
-
-      String preview =
-          msg['last_message'] ??
-          msg['content'] ??
-          (msg['file_path'] != null
-              ? "[File] ${msg['file_path'].toString().split('/').last}"
-              : "[New Message]");
-
-      String timestamp = msg['timestamp'] ?? DateTime.now().toIso8601String();
-      String? status = msg['status'];
-
-      if (idx != -1) {
-        _chats[idx].lastMessage = preview;
-        _chats[idx].unreadCount =
-            msg['unread_count'] ?? (_chats[idx].unreadCount + 1);
-        _chats[idx].isRead = _chats[idx].unreadCount == 0;
-        _chats[idx].timeAgo = timestamp;
-        if (status != null) _chats[idx].status = status;
+        // For incoming messages to this chat (where I am receiver and they send)
+        // the status will be implicitly updated when I read the chat.
       } else {
-        _chats.insert(
-          0,
-          ChatMessage(
-            name: displayName,
-            username: identifier,
-            lastMessage: preview,
-            timeAgo: timestamp,
-            avatarUrl: 'https://via.placeholder.com/50',
-            isGroup: isGroup,
-            isRead: false,
-            unreadCount: msg['unread_count'] ?? 1,
-            status: status,
-          ),
-        );
-      }
+        // Handle 'chat_preview_update', 'direct_message', 'group_message' types for previews
+        bool isGroup =
+            msg['chat_type'] == 'group' ||
+            msg['is_group'] == true ||
+            msg['type'] ==
+                'group_message'; // extra check for group_message type
 
-      // Sort chats by latest timestamp
-      _chats.sort((a, b) => b.timeAgo.compareTo(a.timeAgo));
+        String identifier;
+        String displayName;
+
+        if (isGroup) {
+          identifier = (msg['group'] ?? msg['chat_id'] ?? '').toString();
+          displayName = identifier;
+        } else {
+          if (msg['from'] == _currentUsername) {
+            identifier = (msg['to'] ?? '');
+          } else {
+            identifier = (msg['from'] ?? '');
+          }
+          displayName = identifier;
+        }
+
+        int idx = _chats.indexWhere(
+          (c) => c.isGroup == isGroup && c.username == identifier,
+        );
+
+        String preview =
+            msg['last_message'] ??
+            msg['content'] ??
+            (msg['file_path'] != null
+                ? "[File] ${msg['file_path'].toString().split('/').last}"
+                : "[New Message]");
+
+        String timestamp = msg['timestamp'] ?? DateTime.now().toIso8601String();
+        DateTime lastMessageTime =
+            DateTime.tryParse(timestamp) ?? DateTime.now();
+        String? status = msg['status']; // Status of the last message in chat
+
+        if (idx != -1) {
+          _chats[idx].lastMessage = preview;
+          _chats[idx].unreadCount =
+              msg['unread_count'] ?? (_chats[idx].unreadCount + 1);
+          _chats[idx].isRead = _chats[idx].unreadCount == 0;
+          _chats[idx].timeAgo = timestamp;
+          _chats[idx].lastMessageTime = lastMessageTime; // NEW
+          if (status != null) _chats[idx].status = status;
+        } else {
+          _chats.insert(
+            0,
+            ChatMessage(
+              name: displayName,
+              username: identifier,
+              lastMessage: preview,
+              timeAgo: timestamp,
+              avatarUrl: 'https://via.placeholder.com/50',
+              isGroup: isGroup,
+              isRead: false,
+              unreadCount: msg['unread_count'] ?? 1,
+              status: status,
+              lastMessageTime: lastMessageTime, // NEW
+            ),
+          );
+        }
+      } // End of message type check
+
+      // Sort chats by latest DateTime, not string
+      _chats.sort((a, b) => b.lastMessageTime.compareTo(a.lastMessageTime));
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    // NEW: Consume the WebSocketProvider
+    final webSocketProvider = Provider.of<WebSocketProvider>(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -314,7 +326,6 @@ class _InboxScreenState extends State<InboxScreen>
                 style: TextStyle(color: Colors.blue),
               ),
               onPressed: () {
-                // --- PATCH: Return ForwardTarget list instead of just usernames ---
                 final selectedTargets =
                     _chats
                         .where(
@@ -372,18 +383,28 @@ class _InboxScreenState extends State<InboxScreen>
           } else {
             final chats = snapshot.data!;
             if (_chats.isEmpty) {
-              _chats = chats; // Only assign once!
+              _chats = chats; // Only assign once on initial load
+              // Important: _chats can be mutated by onNewMessage, so no direct `snapshot.data!` usage after first assignment
             }
             final filteredChats = _filterBySearch(
-              _chats,
+              _chats, // Use the mutable _chats list here
               _searchController.text,
             );
             return TabBarView(
               controller: _tabController,
               children: [
-                _buildChatList(filteredChats),
-                _buildChatList(filterChats(filteredChats, true)),
-                _buildChatList(filterChats(filteredChats, false)),
+                _buildChatList(
+                  filteredChats,
+                  webSocketProvider,
+                ), // Pass provider
+                _buildChatList(
+                  filterChats(filteredChats, true),
+                  webSocketProvider,
+                ), // Pass provider
+                _buildChatList(
+                  filterChats(filteredChats, false),
+                  webSocketProvider,
+                ), // Pass provider
               ],
             );
           }
@@ -397,6 +418,7 @@ class _InboxScreenState extends State<InboxScreen>
             icon: Icon(Icons.add_circle_outline),
             label: 'New Group',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.feed), label: 'Feed'),
           BottomNavigationBarItem(
             icon: Icon(Icons.chat_bubble_outline),
             label: 'Inbox',
@@ -425,7 +447,11 @@ class _InboxScreenState extends State<InboxScreen>
     }).toList();
   }
 
-  Widget _buildChatList(List<ChatMessage> chats) {
+  // MODIFIED: _buildChatList to accept WebSocketProvider
+  Widget _buildChatList(
+    List<ChatMessage> chats,
+    WebSocketProvider webSocketProvider,
+  ) {
     if (chats.isEmpty) {
       return const Center(child: Text('No chats found.'));
     }
@@ -434,6 +460,9 @@ class _InboxScreenState extends State<InboxScreen>
       itemBuilder: (context, index) {
         final chat = chats[index];
         final isSelected = _selectedUsernames.contains(chat.username);
+        // NEW: Determine if the chat partner is online using the provider
+        final isChatPartnerOnline =
+            !chat.isGroup && webSocketProvider.isUserOnline(chat.username);
 
         return ListTile(
           leading: GestureDetector(
@@ -452,7 +481,8 @@ class _InboxScreenState extends State<InboxScreen>
             child: Stack(
               children: [
                 CircleAvatar(backgroundImage: NetworkImage(chat.avatarUrl)),
-                if (_activeUsers.contains(chat.username))
+                // NEW: Show online indicator based on provider status
+                if (isChatPartnerOnline) // Use the new variable
                   Positioned(
                     right: 0,
                     bottom: 0,
@@ -476,10 +506,12 @@ class _InboxScreenState extends State<InboxScreen>
           subtitle: Row(
             children: [
               // Only show status icon if this is a direct chat and I am the sender of the last message
+              // RETAINED: Existing message status logic
               if (!chat.isGroup &&
                   chat.status != null &&
                   chat.lastMessage.isNotEmpty &&
-                  chat.username != _currentUsername)
+                  chat.username !=
+                      _currentUsername) // Ensure it's not a message FROM ME
                 Padding(
                   padding: const EdgeInsets.only(right: 2.0),
                   child: Icon(
@@ -616,6 +648,7 @@ class ChatMessage {
   bool isRead;
   int unreadCount;
   String? status;
+  DateTime lastMessageTime; // NEW FIELD
 
   ChatMessage({
     required this.name,
@@ -627,19 +660,22 @@ class ChatMessage {
     this.isRead = false,
     this.unreadCount = 0,
     this.status,
+    required this.lastMessageTime, // NEW
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) {
+    final timeString = json['time_ago'] ?? DateTime.now().toIso8601String();
     return ChatMessage(
       name: json['name'],
       username: json['username'],
       lastMessage: json['last_message'],
-      timeAgo: json['time_ago'],
+      timeAgo: timeString,
       avatarUrl: json['avatar_url'],
       isGroup: json['is_group'],
       isRead: json['is_read'] ?? false,
       unreadCount: json['unread_count'] ?? 0,
       status: json['status'],
+      lastMessageTime: DateTime.tryParse(timeString) ?? DateTime.now(), // NEW
     );
   }
 }

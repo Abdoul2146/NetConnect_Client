@@ -6,6 +6,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'package:netconnect/server_config.dart';
+import 'package:netconnect/screens/notice_board.dart';
+import 'package:provider/provider.dart'; // NEW: Import provider
+import 'package:netconnect/screens/websocket_provider.dart'; // NEW: Import your WebSocketProvider
 
 class CreateGroupScreen extends StatefulWidget {
   const CreateGroupScreen({super.key});
@@ -19,7 +22,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   List<User> _allUsers = []; // Replace with your actual user fetching logic
   List<User> _selectedUsers = [];
 
-  int _selectedIndex = 1; // Set initial index to Settings
+  int _selectedIndex = 1; // Set initial index to New Group tab in bottom nav
 
   void _onItemTapped(int index) {
     setState(() {
@@ -31,15 +34,21 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
           MaterialPageRoute(builder: (context) => const UsersScreen()),
         );
       } else if (index == 1) {
-        print('New Group Tapped');
-        // We are already on the Create Group screen
+        print('Add Group Tapped');
+        // This is the current screen, no need to navigate
       } else if (index == 2) {
+        print('Feed tapped');
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const NoticeBoardPage()),
+        );
+      } else if (index == 3) {
         print('Inbox Tapped');
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const InboxScreen()),
         );
-      } else if (index == 3) {
+      } else if (index == 4) {
         print('Settings Tapped');
         Navigator.pushReplacement(
           context,
@@ -65,9 +74,16 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 
     final serverIp = await ServerConfig.getServerIp();
     if (serverIp == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Server IP not set. Please configure network settings.')),
-      );
+      if (mounted) {
+        // Added mounted check
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Server IP not set. Please configure network settings.',
+            ),
+          ),
+        );
+      }
       return;
     }
 
@@ -85,9 +101,12 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       setState(() {
         _allUsers = [];
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to fetch users: ${response.body}')),
-      );
+      if (mounted) {
+        // Added mounted check
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to fetch users: ${response.body}')),
+        );
+      }
     }
   }
 
@@ -104,13 +123,16 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   void _createGroup() async {
     final groupName = _groupNameController.text.trim();
     if (groupName.isEmpty || _selectedUsers.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please enter a group name and select at least one user.',
+      if (mounted) {
+        // Added mounted check
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Please enter a group name and select at least one user.',
+            ),
           ),
-        ),
-      );
+        );
+      }
       return;
     }
 
@@ -118,16 +140,25 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     final token = prefs.getString('access_token');
     final myUsername = prefs.getString('username');
     if (token == null || myUsername == null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Not authenticated!')));
+      if (mounted) {
+        // Added mounted check
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Not authenticated!')));
+      }
       return;
     }
 
+    // Ensure the current user is always added to the group
     if (!_selectedUsers.any((u) => u.username == myUsername)) {
       final me = _allUsers.firstWhere(
         (u) => u.username == myUsername,
-        orElse: () => User(id: '', name: myUsername, username: myUsername),
+        orElse:
+            () => User(
+              id: '',
+              name: myUsername,
+              username: myUsername,
+            ), // Fallback if current user not in _allUsers
       );
       _selectedUsers.add(me);
     }
@@ -136,9 +167,16 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 
     final serverIp2 = await ServerConfig.getServerIp();
     if (serverIp2 == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Server IP not set. Please configure network settings.')),
-      );
+      if (mounted) {
+        // Added mounted check
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Server IP not set. Please configure network settings.',
+            ),
+          ),
+        );
+      }
       return;
     }
     final response = await http.post(
@@ -152,26 +190,40 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Group created: ${data['group_name']}')),
-      );
+      if (mounted) {
+        // Added mounted check
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Group created: ${data['group_name']}')),
+        );
+      }
       // Redirect to Inbox after a short delay so the user sees the message
       Future.delayed(const Duration(milliseconds: 800), () {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => const CreateGroupScreen()),
-          (route) => false,
-        );
+        if (mounted) {
+          // Added mounted check
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const InboxScreen(),
+            ), // Assuming InboxScreen is the destination
+            (route) => false,
+          );
+        }
       });
     } else {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed: ${response.body}')));
+      if (mounted) {
+        // Added mounted check
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed: ${response.body}')));
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // NEW: Consume the WebSocketProvider
+    final webSocketProvider = Provider.of<WebSocketProvider>(context);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Create New Group'),
@@ -209,7 +261,6 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
               controller: _groupNameController,
               decoration: const InputDecoration(hintText: 'Enter group name'),
             ),
-            // ... more widgets ...
             const SizedBox(height: 24),
             Text(
               'Add Participants',
@@ -227,16 +278,44 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                         itemBuilder: (context, index) {
                           final user = _allUsers[index];
                           final isSelected = _selectedUsers.contains(user);
+                          // NEW: Determine if the user is online using the provider
+                          final isUserOnline = webSocketProvider.isUserOnline(
+                            user.username,
+                          );
+
                           return ListTile(
-                            leading: CircleAvatar(
-                              backgroundImage:
-                                  user.avatarUrl != null
-                                      ? NetworkImage(user.avatarUrl!)
-                                      : null,
-                              child:
-                                  user.avatarUrl == null
-                                      ? Text(user.name[0].toUpperCase())
-                                      : null,
+                            leading: Stack(
+                              // Wrap CircleAvatar in Stack for online indicator
+                              children: [
+                                CircleAvatar(
+                                  backgroundImage:
+                                      user.avatarUrl != null
+                                          ? NetworkImage(user.avatarUrl!)
+                                          : null,
+                                  child:
+                                      user.avatarUrl == null
+                                          ? Text(user.name[0].toUpperCase())
+                                          : null,
+                                ),
+                                // NEW: Online indicator
+                                if (isUserOnline)
+                                  Positioned(
+                                    right: 0,
+                                    bottom: 0,
+                                    child: Container(
+                                      width: 10,
+                                      height: 10,
+                                      decoration: BoxDecoration(
+                                        color: Colors.green,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: Colors.white,
+                                          width: 2,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                             title: Text(user.name),
                             trailing: Checkbox(
@@ -255,6 +334,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
           ],
         ),
       ),
+
       bottomNavigationBar: BottomNavigationBar(
         type: BottomNavigationBarType.fixed,
         items: const [
@@ -263,6 +343,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
             icon: Icon(Icons.add_circle_outline),
             label: 'New Group',
           ),
+          BottomNavigationBarItem(icon: Icon(Icons.feed), label: 'Feed'),
           BottomNavigationBarItem(
             icon: Icon(Icons.chat_bubble_outline),
             label: 'Inbox',

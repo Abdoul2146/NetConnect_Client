@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/web_socket_channel.dart'; // RETAINED: Local WebSocket management
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import 'inbox.dart';
@@ -14,6 +14,8 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:open_file/open_file.dart';
 import 'package:flutter/services.dart';
+import 'package:provider/provider.dart'; // NEW: Import provider
+import 'package:netconnect/screens/websocket_provider.dart'; // NEW: Import your WebSocketProvider
 
 class ChatScreen extends StatefulWidget {
   final String? username; // chat partner's username
@@ -39,17 +41,17 @@ class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _controller = TextEditingController();
   final List<ChatMessage> _messages = [];
   final ScrollController _scrollController = ScrollController();
-  WebSocketChannel? _channel;
-  String? _currentUsername;
-  String? _token;
+  WebSocketChannel? _channel; // RETAINED: Local WebSocket channel for messaging
+  String? _currentUsername; // RETAINED: Current username
+  String? _token; // RETAINED: Token
   PlatformFile? _pendingFile;
   String? _pendingFileMimeType;
-  Set<String> _activeUsers = {};
+  // REMOVED: Set<String> _activeUsers = {}; // Active users now managed by WebSocketProvider
 
   @override
   void initState() {
     super.initState();
-    _initCredentialsAndConnect();
+    _initCredentialsAndConnect(); // RETAINED: Calls local WebSocket setup
   }
 
   void _scrollToBottom() {
@@ -71,6 +73,46 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollToBottom();
   }
 
+  Future<void> _deleteMessage(ChatMessage m) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString('access_token');
+    final serverIp = await ServerConfig.getServerIp();
+    if (token == null || serverIp == null || m.id == null) return;
+
+    late Uri url;
+    if (widget.isGroup && widget.groupName != null) {
+      // Use group message endpoint
+      url = Uri.parse('http://$serverIp:8000/group_messages/${m.id}/delete');
+    } else {
+      // Use direct message endpoint
+      url = Uri.parse('http://$serverIp:8000/messages/${m.id}/delete');
+    }
+
+    final response = await http.delete(
+      url,
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode == 200) {
+      setState(() {
+        _messages.removeWhere((msg) => msg.id == m.id);
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Message deleted')));
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete message: ${response.statusCode}'),
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _openFile(String url, String filename) async {
     final dir = await getTemporaryDirectory();
     final filePath = '${dir.path}/$filename';
@@ -85,9 +127,12 @@ class _ChatScreenState extends State<ChatScreen> {
       if (await Permission.manageExternalStorage.isGranted == false) {
         final status = await Permission.manageExternalStorage.request();
         if (!status.isGranted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Storage permission denied')),
-          );
+          if (mounted) {
+            // Added mounted check
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Storage permission denied')),
+            );
+          }
           return;
         }
       }
@@ -103,13 +148,19 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       await Dio().download(url, filePath);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Saved to $filePath')));
+      if (mounted) {
+        // Added mounted check
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Saved to $filePath')));
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to save file: $e')));
+      if (mounted) {
+        // Added mounted check
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to save file: $e')));
+      }
     }
   }
 
@@ -123,10 +174,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   List<ChatMessage> _filteredMessages() {
-    // Debug print to see what messages we're filtering
-
     int firstUserMsgIdx = _messages.indexWhere((m) {
-      // Debug print for each message being checked
       bool isNotSystem =
           !(m.sender.toLowerCase().contains('system') || m.sender == 'System');
       bool hasContent =
@@ -150,13 +198,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final serverIp3 = await ServerConfig.getServerIp();
     if (serverIp3 == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Server IP not set. Please configure network settings.',
+      if (mounted) {
+        // Added mounted check
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Server IP not set. Please configure network settings.',
+            ),
           ),
-        ),
-      );
+        );
+      }
       return;
     }
     Uri url;
@@ -165,24 +216,23 @@ class _ChatScreenState extends State<ChatScreen> {
         'http://$serverIp3:8000/groups/${widget.groupName}/messages',
       );
     } else {
-      // Fetch only messages between myUsername and widget.username
       final serverIp4 = await ServerConfig.getServerIp();
       if (serverIp4 == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Server IP not set. Please configure network settings.',
+        if (mounted) {
+          // Added mounted check
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Server IP not set. Please configure network settings.',
+              ),
             ),
-          ),
-        );
+          );
+        }
         return;
       }
       url = Uri.parse(
         'http://$serverIp4:8000/messages/$myUsername/${widget.username}',
       );
-      // Refactored:
-      // final serverIp = await ServerConfig.getServerIp();
-      // url = Uri.parse('http://$serverIp:8000/messages?user1=$myUsername&user2=${widget.username}');
     }
     final response = await http.get(
       url,
@@ -212,7 +262,6 @@ class _ChatScreenState extends State<ChatScreen> {
               attachedMessage = null;
             }
 
-            // --- PATCH: Parse forwarded_from from history ---
             final forwardedInfo = ForwardedInfo.fromJson(msg['forwarded_from']);
 
             return ChatMessage(
@@ -224,7 +273,7 @@ class _ChatScreenState extends State<ChatScreen> {
               filePath: msg['file_path'],
               fileType: msg['file_type'],
               attachedMessage: attachedMessage,
-              forwardedInfo: forwardedInfo, // <-- PATCH
+              forwardedInfo: forwardedInfo,
             );
           }),
         );
@@ -236,6 +285,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // MODIFIED METHOD: Removed 'user_active' and 'status' handling.
   Future<void> _initCredentialsAndConnect() async {
     print('Initializing credentials and connecting...');
     final prefs = await SharedPreferences.getInstance();
@@ -249,13 +299,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
       final serverIp = await ServerConfig.getServerIp();
       if (serverIp == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Server IP not set. Please configure network settings.',
+        if (mounted) {
+          // Added mounted check
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Server IP not set. Please configure network settings.',
+              ),
             ),
-          ),
-        );
+          );
+        }
         return;
       }
 
@@ -271,16 +324,17 @@ class _ChatScreenState extends State<ChatScreen> {
           print('Received from WebSocket: $data');
           final msg = json.decode(data);
 
-          // --- User active status ---
-          if (msg['type'] == 'user_active' || msg['type'] == 'status') {
-            setState(() {
-              if (msg['status'] == 'online' || msg['active'] == true) {
-                _activeUsers.add(msg['username']);
-              } else {
-                _activeUsers.remove(msg['username']);
-              }
-            });
-          }
+          // REMOVED: User active status handling from here.
+          // This is now handled by the global WebSocketProvider.
+          // if (msg['type'] == 'user_active' || msg['type'] == 'status') {
+          //   setState(() {
+          //     if (msg['status'] == 'online' || msg['active'] == true) {
+          //       _activeUsers.add(msg['username']);
+          //     } else {
+          //       _activeUsers.remove(msg['username']);
+          //     }
+          //   });
+          // }
 
           // --- Message status (sent/seen) ---
           if (msg['type'] == 'message_status') {
@@ -295,7 +349,6 @@ class _ChatScreenState extends State<ChatScreen> {
           }
 
           // --- Direct messages ---
-          // 2. Parse forwarded_from in WebSocket handler for direct and group messages:
           if (msg['type'] == 'direct_message') {
             if ((msg['from'] == widget.username &&
                     msg['to'] == _currentUsername) ||
@@ -317,7 +370,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 attachedMessage = null;
               }
 
-              // --- PATCH: Parse forwarded_from ---
               final forwardedInfo = ForwardedInfo.fromJson(
                 msg['forwarded_from'],
               );
@@ -332,7 +384,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 filePath: msg['file_path'],
                 fileType: msg['file_type'],
                 attachedMessage: attachedMessage,
-                forwardedInfo: forwardedInfo, // <-- PATCH
+                forwardedInfo: forwardedInfo,
                 status: msg['isMe'] == true ? 'sent' : '',
               );
 
@@ -359,7 +411,6 @@ class _ChatScreenState extends State<ChatScreen> {
               attachedMessage = null;
             }
 
-            // --- PATCH: Parse forwarded_from ---
             final forwardedInfo = ForwardedInfo.fromJson(msg['forwarded_from']);
             print('Received group message: $msg');
 
@@ -373,7 +424,7 @@ class _ChatScreenState extends State<ChatScreen> {
               filePath: msg['file_path'],
               fileType: msg['file_type'],
               attachedMessage: attachedMessage,
-              forwardedInfo: forwardedInfo, // <-- PATCH
+              forwardedInfo: forwardedInfo,
             );
             _addMessageAndScroll(groupMsg);
 
@@ -409,13 +460,13 @@ class _ChatScreenState extends State<ChatScreen> {
       "file_type": null,
     };
     print("Sending over WebSocket: $messagePayload");
-    // Send the message as JSON over WebSocket
+    // RETAINED: Send the message as JSON over local WebSocket
     _channel?.sink.add(json.encode(messagePayload));
   }
 
   @override
   void dispose() {
-    _channel?.sink.close();
+    _channel?.sink.close(); // RETAINED: Close local WebSocket
     _controller.dispose();
     super.dispose();
   }
@@ -487,6 +538,7 @@ class _ChatScreenState extends State<ChatScreen> {
             return const Icon(Icons.broken_image, size: 48);
           }
           final url = 'http://$serverIp:8000$normalizedPath';
+          final fileName = m.filePath!.split('/').last;
           return Align(
             alignment: m.isMe ? Alignment.topRight : Alignment.topLeft,
             child: Container(
@@ -514,7 +566,74 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       ),
                     GestureDetector(
-                      onTap: () => _showImageDialog(url),
+                      onTap: () {
+                        _showImageDialog(url, fileName: fileName);
+                      },
+                      onLongPress: () {
+                        showModalBottomSheet(
+                          context: context,
+                          builder: (context) {
+                            return Wrap(
+                              children: [
+                                ListTile(
+                                  leading: const Icon(Icons.copy),
+                                  title: const Text('Copy'),
+                                  onTap: () {
+                                    Clipboard.setData(
+                                      ClipboardData(text: m.text),
+                                    );
+                                    if (mounted) {
+                                      Navigator.pop(context);
+                                      ScaffoldMessenger.of(
+                                        context,
+                                      ).showSnackBar(
+                                        const SnackBar(
+                                          content: Text('Copied!'),
+                                        ),
+                                      );
+                                    }
+                                  },
+                                ),
+                                ListTile(
+                                  leading: const Icon(Icons.forward),
+                                  title: const Text('Forward'),
+                                  onTap: () {
+                                    if (mounted) {
+                                      Navigator.pop(context);
+                                      _forwardMessage(m);
+                                    }
+                                  },
+                                ),
+                                ListTile(
+                                  leading: const Icon(
+                                    Icons.delete,
+                                    color: Colors.red,
+                                  ),
+                                  title: const Text(
+                                    'Delete',
+                                    style: TextStyle(color: Colors.red),
+                                  ),
+                                  onTap: () async {
+                                    Navigator.pop(context);
+                                    await _deleteMessage(m);
+                                  },
+                                ),
+                                ListTile(
+                                  leading: const Icon(
+                                    Icons.save_alt_rounded,
+                                    color: Colors.blue,
+                                  ),
+                                  title: const Text('Download'),
+                                  onTap: () async {
+                                    Navigator.pop(context);
+                                    await _saveFile(url, fileName);
+                                  },
+                                ),
+                              ],
+                            );
+                          },
+                        );
+                      },
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: Image.network(
@@ -589,22 +708,39 @@ class _ChatScreenState extends State<ChatScreen> {
               return Wrap(
                 children: [
                   ListTile(
-                    leading: Icon(Icons.copy),
-                    title: Text('Copy'),
+                    leading: const Icon(Icons.copy), // Added const
+                    title: const Text('Copy'), // Added const
                     onTap: () {
                       Clipboard.setData(ClipboardData(text: m.text));
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(
-                        context,
-                      ).showSnackBar(SnackBar(content: Text('Copied!')));
+                      if (mounted) {
+                        // Added mounted check
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Copied!')),
+                        );
+                      }
                     },
                   ),
                   ListTile(
-                    leading: Icon(Icons.forward),
-                    title: Text('Forward'),
+                    leading: const Icon(Icons.forward), // Added const
+                    title: const Text('Forward'), // Added const
                     onTap: () {
+                      if (mounted) {
+                        // Added mounted check
+                        Navigator.pop(context);
+                        _forwardMessage(m);
+                      }
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.delete, color: Colors.red),
+                    title: const Text(
+                      'Delete',
+                      style: TextStyle(color: Colors.red),
+                    ),
+                    onTap: () async {
                       Navigator.pop(context);
-                      _forwardMessage(m);
+                      await _deleteMessage(m);
                     },
                   ),
                 ],
@@ -660,7 +796,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
+                          const Icon(
+                            // Added const
                             Icons.picture_as_pdf,
                             color: Colors.red,
                             size: 32,
@@ -679,14 +816,22 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                           const SizedBox(width: 8),
                           IconButton(
-                            icon: Icon(Icons.open_in_new),
+                            icon: const Icon(
+                              Icons.open_in_new_rounded,
+                              color: Colors.green,
+                              size: 20,
+                            ), // Added const
                             tooltip: 'Open file',
                             onPressed: () async {
                               await _openFile(url, fileName);
                             },
                           ),
                           IconButton(
-                            icon: Icon(Icons.save_alt),
+                            icon: const Icon(
+                              Icons.save_alt_rounded,
+                              color: Colors.blue,
+                              size: 20,
+                            ), // Added const
                             tooltip: 'Save to device',
                             onPressed: () async {
                               await _saveFile(url, fileName);
@@ -720,22 +865,39 @@ class _ChatScreenState extends State<ChatScreen> {
             return Wrap(
               children: [
                 ListTile(
-                  leading: Icon(Icons.copy),
-                  title: Text('Copy'),
+                  leading: const Icon(Icons.copy), // Added const
+                  title: const Text('Copy'), // Added const
                   onTap: () {
                     Clipboard.setData(ClipboardData(text: m.text));
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text('Copied!')));
+                    if (mounted) {
+                      // Added mounted check
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(
+                        context,
+                      ).showSnackBar(const SnackBar(content: Text('Copied!')));
+                    }
                   },
                 ),
                 ListTile(
-                  leading: Icon(Icons.forward),
-                  title: Text('Forward'),
+                  leading: const Icon(Icons.forward), // Added const
+                  title: const Text('Forward'), // Added const
                   onTap: () {
+                    if (mounted) {
+                      // Added mounted check
+                      Navigator.pop(context);
+                      _forwardMessage(m);
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete, color: Colors.red),
+                  title: const Text(
+                    'Delete',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                  onTap: () async {
                     Navigator.pop(context);
-                    _forwardMessage(m);
+                    await _deleteMessage(m);
                   },
                 ),
               ],
@@ -771,14 +933,15 @@ class _ChatScreenState extends State<ChatScreen> {
                   ),
                 // --- PATCH: Show Forwarded tag ---
                 if (m.forwardedInfo != null && m.forwardedInfo!.from != null)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 4.0),
+                  const Padding(
+                    // Added const
+                    padding: EdgeInsets.only(bottom: 4.0),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           'Forwarded',
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontStyle: FontStyle.italic,
                             color: Colors.orange,
                             fontSize: 12,
@@ -802,8 +965,9 @@ class _ChatScreenState extends State<ChatScreen> {
                         );
                       }
                       String normalizedPath = m.filePath!.replaceAll('\\', '/');
-                      if (!normalizedPath.startsWith('/'))
+                      if (!normalizedPath.startsWith('/')) {
                         normalizedPath = '/$normalizedPath';
+                      }
                       final url = 'http://$serverIp:8000$normalizedPath';
                       final fileName = m.text.replaceFirst(
                         RegExp(r'^\[[^\]]+\] '),
@@ -841,7 +1005,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                 Row(
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
-                                    Icon(
+                                    const Icon(
+                                      // Added const
                                       Icons.insert_drive_file,
                                       color: Colors.blueGrey,
                                     ),
@@ -859,14 +1024,22 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ),
                                     const SizedBox(width: 8),
                                     IconButton(
-                                      icon: Icon(Icons.open_in_new),
+                                      icon: const Icon(
+                                        Icons.open_in_new_rounded,
+                                        color: Colors.green,
+                                        size: 20,
+                                      ), // Added const
                                       tooltip: 'Open file',
                                       onPressed: () async {
                                         await _openFile(url, fileName);
                                       },
                                     ),
                                     IconButton(
-                                      icon: Icon(Icons.save_alt),
+                                      icon: const Icon(
+                                        Icons.save_alt_rounded,
+                                        color: Colors.blue,
+                                        size: 20,
+                                      ), // Added const
                                       tooltip: 'Save to device',
                                       onPressed: () async {
                                         await _saveFile(url, fileName);
@@ -922,9 +1095,32 @@ class _ChatScreenState extends State<ChatScreen> {
                   )
                 else ...[
                   Text(m.text, style: const TextStyle(fontSize: 14)),
-                  Text(
-                    _formatTime(m.timestamp),
-                    style: const TextStyle(color: Colors.grey, fontSize: 10),
+                  Row(
+                    // Added Row for consistency with other status displays
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _formatTime(m.timestamp),
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 10,
+                        ),
+                      ),
+                      if (m.isMe) // Only show status for messages I sent
+                        Padding(
+                          padding: const EdgeInsets.only(left: 4.0),
+                          child: Icon(
+                            m.status == 'seen'
+                                ? Icons.done_all
+                                : m.status == 'sent'
+                                ? Icons.check
+                                : Icons.access_time,
+                            size: 14,
+                            color:
+                                m.status == 'seen' ? Colors.blue : Colors.grey,
+                          ),
+                        ),
+                    ],
                   ),
                 ],
               ],
@@ -937,6 +1133,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // NEW: Consume the WebSocketProvider
+    final webSocketProvider = Provider.of<WebSocketProvider>(context);
+
+    // NEW: Determine the online status of the chat partner (only for direct chats)
+    bool isChatPartnerOnline = false;
+    // Only check online status if it's a direct chat (not a group) and username is not null
+    if (!widget.isGroup && widget.username != null) {
+      isChatPartnerOnline = webSocketProvider.isUserOnline(widget.username!);
+    }
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -968,14 +1174,32 @@ class _ChatScreenState extends State<ChatScreen> {
                   );
                 }
               },
-              child: Text(
-                widget.isGroup
-                    ? (widget.groupName ?? '')
-                    : (widget.username ?? ''),
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
-                ),
+              child: Column(
+                // NEW: Wrap title and status in a Column
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.isGroup
+                        ? (widget.groupName ?? '')
+                        : (widget.username ?? ''),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  // NEW: Display online/offline status only for direct individual chats
+                  if (!widget
+                      .isGroup) // This condition ensures it's not a group chat
+                    Text(
+                      isChatPartnerOnline
+                          ? 'Online'
+                          : 'Offline', // NEW: Use status from provider
+                      style: const TextStyle(
+                        fontSize: 12.0,
+                        color: Colors.white70,
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
@@ -1039,7 +1263,8 @@ class _ChatScreenState extends State<ChatScreen> {
                                 fit: BoxFit.cover,
                               )
                             else
-                              Icon(
+                              const Icon(
+                                // Added const
                                 Icons.insert_drive_file,
                                 color: Colors.blueGrey,
                               ),
@@ -1100,23 +1325,60 @@ class _ChatScreenState extends State<ChatScreen> {
     return "${watTime.hour.toString().padLeft(2, '0')}:${watTime.minute.toString().padLeft(2, '0')}";
   }
 
-  void _showImageDialog(String imageUrl) {
+  void _showImageDialog(String imageUrl, {String? fileName}) {
     showDialog(
       context: context,
       builder:
           (context) => Dialog(
             backgroundColor: Colors.black,
-            child: InteractiveViewer(
-              child: Image.network(
-                imageUrl,
-                fit: BoxFit.contain,
-                errorBuilder:
-                    (context, error, stackTrace) => const Icon(
-                      Icons.broken_image,
-                      color: Colors.white,
-                      size: 100,
+            child: Stack(
+              children: [
+                Center(
+                  child: InteractiveViewer(
+                    child: Image.network(
+                      imageUrl,
+                      fit: BoxFit.contain,
+                      width: MediaQuery.of(context).size.width * 0.9,
+                      height: MediaQuery.of(context).size.height * 0.8,
+                      errorBuilder:
+                          (context, error, stackTrace) => const Icon(
+                            Icons.broken_image,
+                            color: Colors.white,
+                            size: 100,
+                          ),
                     ),
-              ),
+                  ),
+                ),
+                Positioned(
+                  top: 8,
+                  right: 8,
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                      size: 30,
+                    ),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ),
+                Positioned(
+                  bottom: 16,
+                  right: 16,
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.save_alt_rounded,
+                      color: Colors.white,
+                      size: 32,
+                    ),
+                    tooltip: 'Save to device',
+                    onPressed: () async {
+                      if (fileName != null) {
+                        await _saveFile(imageUrl, fileName);
+                      }
+                    },
+                  ),
+                ),
+              ],
             ),
           ),
     );
@@ -1162,13 +1424,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final serverIp2 = await ServerConfig.getServerIp();
     if (serverIp2 == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Server IP not set. Please configure network settings.',
+      if (mounted) {
+        // Added mounted check
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Server IP not set. Please configure network settings.',
+            ),
           ),
-        ),
-      );
+        );
+      }
       return;
     }
     final uri =
@@ -1210,6 +1475,14 @@ class _ChatScreenState extends State<ChatScreen> {
       // Wait for WebSocket confirmation to add message
     } else {
       print('Failed to send file: ${response.statusCode}');
+      if (mounted) {
+        // Added mounted check
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to send file: ${response.statusCode}'),
+          ),
+        );
+      }
     }
   }
 
@@ -1227,18 +1500,21 @@ class _ChatScreenState extends State<ChatScreen> {
 
     final serverIp = await ServerConfig.getServerIp();
     if (serverIp == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Server IP not set. Please configure network settings.',
+      if (mounted) {
+        // Added mounted check
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Server IP not set. Please configure network settings.',
+            ),
           ),
-        ),
-      );
+        );
+      }
       return;
     }
 
     for (final target in selectedTargets) {
-      final sourceType = widget.isGroup ? 'group' : 'direct'; // <-- PATCH
+      final sourceType = widget.isGroup ? 'group' : 'direct';
       if (target.isGroup) {
         // Forward to group
         final uri = Uri.parse(
@@ -1252,7 +1528,7 @@ class _ChatScreenState extends State<ChatScreen> {
           },
           body: {
             'message_id': message.id.toString(),
-            'source_type': sourceType, // <-- PATCH
+            'source_type': sourceType,
           },
         );
       } else {
@@ -1267,15 +1543,18 @@ class _ChatScreenState extends State<ChatScreen> {
           body: {
             'message_id': message.id.toString(),
             'to_username': target.name,
-            'source_type': sourceType, // <-- PATCH
+            'source_type': sourceType,
           },
         );
       }
     }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Message forwarded!')));
+    if (mounted) {
+      // Added mounted check
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Message forwarded!')));
+    }
   }
 
   Future<void> _markChatAsRead() async {
