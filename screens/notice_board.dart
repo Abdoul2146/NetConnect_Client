@@ -555,7 +555,7 @@ class _NoticeBoardPageState extends State<NoticeBoardPage> {
                     padding: const EdgeInsets.all(8.0),
                     child: SizedBox(
                       // <--- Add SizedBox here
-                      width: 150.0, // <--- Set your desired fixed width
+                      width: 200.0, // <--- Set your desired fixed width
                       child: DropdownButtonFormField<String>(
                         value: _selectedBoardId,
                         items: [

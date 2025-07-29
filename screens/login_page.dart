@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:netconnect/server_config.dart';
 import 'package:provider/provider.dart'; // NEW: Import provider for WebSocketProvider
 import 'package:netconnect/screens/websocket_provider.dart'; // NEW: Import your WebSocketProvider
+import 'package:netconnect/screens/forgotten_password.dart'; // Import the ForgotPasswordScreen
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -196,7 +197,15 @@ class _LoginScreenState extends State<LoginScreen> {
                   alignment: Alignment.centerLeft,
                   child: TextButton(
                     onPressed: () {
-                      // Implement forgot password logic
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder:
+                              (context) => ForgotPasswordScreen(
+                                username: _usernameController.text,
+                              ),
+                        ),
+                      );
                       print('Forgot Password pressed');
                     },
                     child: const Text('Forgot Password?'),

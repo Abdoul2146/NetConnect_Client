@@ -4,10 +4,10 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart'; // NEW: Import provider
 import 'package:netconnect/screens/websocket_provider.dart'; // NEW: Import your WebSocketProvider
-
-import 'edit_profile.dart'; // Make sure this path is correct
+import 'edit_profile.dart';
 import 'package:netconnect/screens/chat_screen.dart'; // Make sure this path is correct
-import 'package:netconnect/server_config.dart'; // Make sure this path is correct
+import 'package:netconnect/server_config.dart';
+import 'package:netconnect/screens/update_password.dart';
 
 class EmployeeProfileScreen extends StatefulWidget {
   final String?
@@ -200,35 +200,68 @@ class _EmployeeProfileScreenState extends State<EmployeeProfileScreen> {
                         ),
                       ),
                       const SizedBox(height: 4.0),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            width: 8.0,
-                            height: 8.0,
-                            decoration: BoxDecoration(
-                              color:
-                                  isProfileUserOnline // NEW: Use status from provider
-                                      ? Colors.green
-                                      : Colors.grey,
-                              shape: BoxShape.circle,
+                      if (!isCurrentUser)
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Container(
+                              width: 8.0,
+                              height: 8.0,
+                              decoration: BoxDecoration(
+                                color:
+                                    isProfileUserOnline
+                                        ? Colors.green
+                                        : Colors.grey,
+                                shape: BoxShape.circle,
+                              ),
                             ),
-                          ),
-                          const SizedBox(width: 4.0),
-                          Text(
-                            isProfileUserOnline // NEW: Use status from provider
-                                ? 'Online'
-                                : 'Offline',
-                            style: const TextStyle(color: Colors.grey),
-                          ),
-                        ],
-                      ),
+                            const SizedBox(width: 4.0),
+                            Text(
+                              isProfileUserOnline ? 'Online' : 'Offline',
+                              style: const TextStyle(color: Colors.grey),
+                            ),
+                          ],
+                        ),
                       const SizedBox(height: 24.0),
                       _buildInfoRow('Job role', profile!['job_title'] ?? ''),
                       _buildInfoRow('Contact email', profile!['email'] ?? ''),
                       _buildInfoRow('Contact', profile!['contact'] ?? ''),
                       _buildInfoRow('username', profile!['username'] ?? ''),
                       const SizedBox(height: 32.0),
+                      // Only show update password for current user
+                      if (isCurrentUser)
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder:
+                                      (context) => UpdatePasswordScreen(
+                                        username: profile!['username'],
+                                        requireCurrentPassword: true,
+                                      ),
+                                ),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.black,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 16.0,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8.0),
+                              ),
+                            ),
+                            child: const Text(
+                              'Update Password',
+                              style: TextStyle(fontSize: 16.0),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 16.0),
                       // Only show message button for other users
                       if (!isCurrentUser)
                         SizedBox(

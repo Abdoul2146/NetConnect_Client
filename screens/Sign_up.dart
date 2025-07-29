@@ -20,6 +20,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _securityAnswer1Controller = TextEditingController();
+  final _securityAnswer2Controller = TextEditingController();
+  final _securityAnswer3Controller = TextEditingController();
 
   bool _obscurePassword = true;
 
@@ -54,6 +57,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
           'contact': _contactController.text,
           'username': _usernameController.text,
           'password': _passwordController.text,
+          'security_answer1': _securityAnswer1Controller.text,
+          'security_answer2': _securityAnswer2Controller.text,
+          'security_answer3': _securityAnswer3Controller.text,
         },
       );
 
@@ -216,6 +222,53 @@ class _SignUpScreenState extends State<SignUpScreen> {
                       }
                       if (value.length < 6) {
                         return 'Password must be at least 6 characters';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16.0),
+                  Text(
+                    'Security Questions (for password recovery)',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                  ),
+                  const SizedBox(height: 8.0),
+                  TextFormField(
+                    controller: _securityAnswer1Controller,
+                    decoration: const InputDecoration(
+                      labelText: "What was your first pet's name?",
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please answer this question';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12.0),
+                  TextFormField(
+                    controller: _securityAnswer2Controller,
+                    decoration: const InputDecoration(
+                      labelText: "What is your mother's maiden name?",
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please answer this question';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 12.0),
+                  TextFormField(
+                    controller: _securityAnswer3Controller,
+                    decoration: const InputDecoration(
+                      labelText: "What city were you born in?",
+                      border: OutlineInputBorder(),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please answer this question';
                       }
                       return null;
                     },
