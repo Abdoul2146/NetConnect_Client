@@ -52,7 +52,9 @@ class _CreatePostPageState extends State<CreatePostPage> {
               children: [
                 ElevatedButton.icon(
                   onPressed: () async {
-                    final result = await FilePicker.platform.pickFiles();
+                    final result = await FilePicker.platform.pickFiles(
+                      withData: true,
+                    );
                     if (result != null && result.files.isNotEmpty) {
                       setState(() {
                         pickedFile = result.files.first;
@@ -65,9 +67,25 @@ class _CreatePostPageState extends State<CreatePostPage> {
                 if (pickedFile != null)
                   Padding(
                     padding: const EdgeInsets.only(left: 8.0),
-                    child: Text(
-                      pickedFile!.name,
-                      style: TextStyle(fontSize: 13, color: Colors.blueGrey),
+                    child: Row(
+                      children: [
+                        Text(
+                          pickedFile!.name,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: Colors.blueGrey,
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(Icons.cancel, color: Colors.red, size: 18),
+                          tooltip: 'Remove file',
+                          onPressed: () {
+                            setState(() {
+                              pickedFile = null;
+                            });
+                          },
+                        ),
+                      ],
                     ),
                   ),
               ],
@@ -84,39 +102,61 @@ class _CreatePostPageState extends State<CreatePostPage> {
                           final desc = _descController.text.trim();
                           if (title.isEmpty) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Title is required')),
+                              const SnackBar(
+                                content: Text('Title is required'),
+                              ),
                             );
                             return;
                           }
                           setState(() => _isPosting = true);
+
                           final prefs = await SharedPreferences.getInstance();
                           final token = prefs.getString('access_token');
                           final serverIp = await ServerConfig.getServerIp();
-                          var uri = Uri.parse(
+                          if (token == null || serverIp == null) {
+                            setState(() => _isPosting = false);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Missing server IP or token'),
+                              ),
+                            );
+                            return;
+                          }
+
+                          final uri = Uri.parse(
                             'http://$serverIp:8000/notice_boards/${widget.boardId}/posts',
                           );
-                          var request =
+                          final request =
                               http.MultipartRequest('POST', uri)
                                 ..headers['Authorization'] = 'Bearer $token'
                                 ..fields['title'] = title
                                 ..fields['description'] = desc;
+
                           if (pickedFile != null) {
                             request.files.add(
                               http.MultipartFile.fromBytes(
-                                'attachment',
+                                'attachment', // <-- matches backend
                                 pickedFile!.bytes!,
                                 filename: pickedFile!.name,
                               ),
                             );
                           }
+
                           final response = await request.send();
                           setState(() => _isPosting = false);
+
                           if (response.statusCode == 200 ||
                               response.statusCode == 201) {
                             Navigator.pop(context, true); // Signal success
                           } else {
+                            final respStr =
+                                await response.stream.bytesToString();
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Failed to create post')),
+                              SnackBar(
+                                content: Text(
+                                  'Failed to create post: $respStr',
+                                ),
+                              ),
                             );
                           }
                         },

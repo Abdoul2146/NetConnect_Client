@@ -1,5 +1,3 @@
-// ignore_for_file: use_build_context_synchronously, deprecated_member_use
-
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -285,10 +283,12 @@ class _NoticeBoardPageState extends State<NoticeBoardPage> {
   Future<void> _saveFile(String url, String filename) async {
     // Request storage permission
     if (Platform.isAndroid) {
+      // For Android 11+ (API 30+), request MANAGE_EXTERNAL_STORAGE
       if (await Permission.manageExternalStorage.isGranted == false) {
         final status = await Permission.manageExternalStorage.request();
         if (!status.isGranted) {
           if (mounted) {
+            // Added mounted check
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Storage permission denied')),
             );
@@ -297,10 +297,10 @@ class _NoticeBoardPageState extends State<NoticeBoardPage> {
         }
       }
     }
-    // Get downloads directory
     Directory? dir;
     if (Platform.isAndroid) {
       dir = Directory('/storage/emulated/0/Download/NetConnect/NoticeBoards');
+      await dir.create(recursive: true);
     } else {
       dir = await getApplicationDocumentsDirectory();
     }
@@ -376,15 +376,17 @@ class _NoticeBoardPageState extends State<NoticeBoardPage> {
         setState(() {
           _boards = data.map((json) => NoticeBoard.fromJson(json)).toList();
           _isLoading = false;
-          if (_selectedBoardId != null) {
+          if (widget.initialBoardId != null) {
+            _selectedBoardId = widget.initialBoardId;
             _currentSelectedBoard = _boards.firstWhereOrNull(
               (b) => b.id == _selectedBoardId,
             );
-          } else if (_boards.isNotEmpty) {
-            _selectedBoardId = _boards.first.id;
-            _currentSelectedBoard = _boards.first;
-            _fetchPosts(_selectedBoardId!);
+            if (_selectedBoardId != null) {
+              _fetchPosts(_selectedBoardId!);
+            }
           } else {
+            // Always default to "Select Board" (null)
+            _selectedBoardId = null;
             _currentSelectedBoard = null;
           }
         });
@@ -417,11 +419,7 @@ class _NoticeBoardPageState extends State<NoticeBoardPage> {
           _posts.remove(boardId);
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to load posts for board: ${response.statusCode}',
-            ),
-          ),
+          SnackBar(content: Text('Please select a board to view posts.')),
         );
       }
     }
@@ -536,6 +534,17 @@ class _NoticeBoardPageState extends State<NoticeBoardPage> {
     final webSocketProvider = Provider.of<WebSocketProvider>(context);
     final NoticeBoard? currentBoard = _currentSelectedBoard;
 
+    // Add this before DropdownButtonFormField in your build method:
+
+    final availableBoards =
+        _boards.where((b) => b.isFollowed || b.isAdmin).toList();
+    if (_selectedBoardId != null &&
+        !availableBoards.any((b) => b.id == _selectedBoardId)) {
+      // The selected board is not in the dropdown, reset selection
+      _selectedBoardId = null;
+      _currentSelectedBoard = null;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text(
@@ -555,7 +564,7 @@ class _NoticeBoardPageState extends State<NoticeBoardPage> {
                     padding: const EdgeInsets.all(8.0),
                     child: SizedBox(
                       // <--- Add SizedBox here
-                      width: 200.0, // <--- Set your desired fixed width
+                      width: 300.0, // <--- Set your desired fixed width
                       child: DropdownButtonFormField<String>(
                         value: _selectedBoardId,
                         items: [
@@ -689,14 +698,24 @@ class _NoticeBoardPageState extends State<NoticeBoardPage> {
                   Expanded(
                     child:
                         _selectedBoardId == null
-                            ? const Center(child: Text('No board selected'))
-                            : _posts[_selectedBoardId!] == null ||
-                                _posts[_selectedBoardId!]!.isEmpty
+                            ? const Center(
+                              child: Text('Please select a board.'),
+                            )
+                            : (_currentSelectedBoard != null &&
+                                !_currentSelectedBoard!.isFollowed &&
+                                !_currentSelectedBoard!.isAdmin)
                             ? const Center(
                               child: Text(
-                                'No posts found or you do not follow this board.',
+                                'You are not following this board.',
+                                style: TextStyle(
+                                  color: Colors.red,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             )
+                            : (_posts[_selectedBoardId!] == null ||
+                                _posts[_selectedBoardId!]!.isEmpty)
+                            ? const Center(child: Text('No posts found.'))
                             : ListView.builder(
                               padding: const EdgeInsets.only(
                                 bottom: 80,
@@ -795,8 +814,13 @@ class _NoticeBoardPageState extends State<NoticeBoardPage> {
                                                 Expanded(
                                                   child: Text(
                                                     p.basename(
-                                                      post.attachmentPath!,
-                                                    ), // Only show file name
+                                                      post.attachmentPath
+                                                              ?.replaceAll(
+                                                                '\\',
+                                                                '/',
+                                                              ) ??
+                                                          '',
+                                                    ),
                                                     overflow:
                                                         TextOverflow.ellipsis,
                                                     style: const TextStyle(
@@ -834,10 +858,13 @@ class _NoticeBoardPageState extends State<NoticeBoardPage> {
                                                                     }
                                                                     final url =
                                                                         'http://$serverIp:8000/${post.attachmentPath}';
-                                                                    final filename =
-                                                                        p.basename(
-                                                                          post.attachmentPath!,
-                                                                        );
+                                                                    final filename = p.basename(
+                                                                      post.attachmentPath!
+                                                                          .replaceAll(
+                                                                            '\\',
+                                                                            '/',
+                                                                          ),
+                                                                    );
                                                                     await _saveFile(
                                                                       url,
                                                                       filename,
