@@ -1240,6 +1240,11 @@ class _ChatScreenState extends State<ChatScreen> {
               },
             ),
           ),
+          if (_isUploadingFile)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8.0),
+              child: LinearProgressIndicator(value: _uploadProgress),
+            ),
           Container(
             padding: const EdgeInsets.all(8.0),
             decoration: BoxDecoration(
@@ -1304,7 +1309,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.send),
-                  onPressed: _sendMessageOrFile,
+                  onPressed: _isUploadingFile ? null : _sendMessageOrFile,
                 ),
                 IconButton(
                   icon: const Icon(Icons.attach_file),
@@ -1385,7 +1390,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _pickFileForSend() async {
-    final result = await FilePicker.platform.pickFiles(withData: true);
+    final result = await FilePicker.platform.pickFiles(withData: false);
     if (result != null && result.files.isNotEmpty) {
       final file = result.files.first;
       String? mimeType;
@@ -1412,11 +1417,30 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // Add this state variable:
+  bool _isUploadingFile = false;
+  double _uploadProgress = 0.0;
+
+  // PATCH: Update _sendFileWithMessage
   Future<void> _sendFileWithMessage() async {
     final file = _pendingFile;
     final mimeType = _pendingFileMimeType;
     final message = _controller.text.trim();
     if (file == null) return;
+
+    // Cap file size to 100MB (or 200MB)
+    const maxSize = 100 * 1024 * 1024; // 100MB
+    if (file.size > maxSize) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('File too large. Max 100MB allowed.')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isUploadingFile = true;
+      _uploadProgress = 0.0;
+    });
 
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('access_token');
@@ -1425,7 +1449,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final serverIp2 = await ServerConfig.getServerIp();
     if (serverIp2 == null) {
       if (mounted) {
-        // Added mounted check
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
@@ -1434,6 +1457,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         );
       }
+      setState(() => _isUploadingFile = false);
       return;
     }
     final uri =
@@ -1443,46 +1467,54 @@ class _ChatScreenState extends State<ChatScreen> {
             )
             : Uri.parse('http://$serverIp2:8000/messages/send_file');
 
-    final request = http.MultipartRequest('POST', uri)
-      ..headers['Authorization'] = 'Bearer $token';
-
-    if (widget.isGroup && widget.groupName != null) {
-      // nothing extra needed, group_name is in URL
-    } else {
-      request.fields['to_username'] = widget.username ?? '';
-    }
-
-    if (message.isNotEmpty) {
-      request.fields['content'] = message;
-    }
-
-    request.files.add(
-      http.MultipartFile.fromBytes(
-        'file',
-        file.bytes!,
+    final dio = Dio();
+    final formData = FormData.fromMap({
+      if (!(widget.isGroup && widget.groupName != null))
+        'to_username': widget.username ?? '',
+      if (message.isNotEmpty) 'content': message,
+      'file': await MultipartFile.fromFile(
+        file.path!,
         filename: file.name,
         contentType: mimeType != null ? MediaType.parse(mimeType) : null,
       ),
-    );
+    });
 
-    final response = await request.send();
-    if (response.statusCode == 200) {
-      setState(() {
-        _pendingFile = null;
-        _pendingFileMimeType = null;
-        _controller.clear();
-      });
-      // Wait for WebSocket confirmation to add message
-    } else {
-      print('Failed to send file: ${response.statusCode}');
-      if (mounted) {
-        // Added mounted check
+    try {
+      final response = await dio.postUri(
+        uri,
+        data: formData,
+        options: Options(
+          headers: {'Authorization': 'Bearer $token'},
+          contentType: 'multipart/form-data',
+        ),
+        onSendProgress: (sent, total) {
+          setState(() {
+            _uploadProgress = total > 0 ? sent / total : 0.0;
+          });
+        },
+      );
+      if (response.statusCode == 200) {
+        setState(() {
+          _pendingFile = null;
+          _pendingFileMimeType = null;
+          _controller.clear();
+          _isUploadingFile = false;
+          _uploadProgress = 0.0;
+        });
+        // Wait for WebSocket confirmation to add message
+      } else {
+        setState(() => _isUploadingFile = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to send file: ${response.statusCode}'),
           ),
         );
       }
+    } catch (e) {
+      setState(() => _isUploadingFile = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to send file: $e')));
     }
   }
 
