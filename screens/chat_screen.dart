@@ -1142,18 +1142,13 @@ class _ChatScreenState extends State<ChatScreen> {
                           fontSize: 10,
                         ),
                       ),
-                      if (m.isMe) // Only show status for messages I sent
+                      if (m.isMe)
                         Padding(
                           padding: const EdgeInsets.only(left: 4.0),
                           child: Icon(
-                            m.status == 'seen'
-                                ? Icons.done_all
-                                : m.status == 'sent'
-                                ? Icons.check
-                                : Icons.access_time,
+                            Icons.check, // Always show "sent" check
                             size: 14,
-                            color:
-                                m.status == 'seen' ? Colors.blue : Colors.grey,
+                            color: Colors.grey,
                           ),
                         ),
                     ],
@@ -1298,18 +1293,17 @@ class _ChatScreenState extends State<ChatScreen> {
                           children: [
                             if (_pendingFileMimeType != null &&
                                 _pendingFileMimeType!.startsWith('image/'))
-                              Image.memory(
-                                _pendingFile!.bytes!,
-                                width: 40,
-                                height: 40,
-                                fit: BoxFit.cover,
-                              )
-                            else
-                              const Icon(
-                                // Added const
-                                Icons.insert_drive_file,
-                                color: Colors.blueGrey,
-                              ),
+                              _pendingFile!.path != null
+                                  ? Image.file(
+                                    File(_pendingFile!.path!),
+                                    width: 40,
+                                    height: 40,
+                                    fit: BoxFit.cover,
+                                  )
+                                  : const Icon(
+                                    Icons.insert_drive_file,
+                                    color: Colors.blueGrey,
+                                  ),
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(

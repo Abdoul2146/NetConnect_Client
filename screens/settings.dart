@@ -102,49 +102,49 @@ class _NetworkSettingsScreenState extends State<NetworkSettingsScreen> {
             ),
           ),
           const SizedBox(height: 12.0),
-          Card(
-            child: ListTile(
-              title: const Text('Language Preferences'),
-              trailing: const Icon(Icons.arrow_forward_ios),
-              onTap: () {
-                // Navigate to language preferences
-                print('Language Preferences tapped');
-              },
-            ),
-          ),
-          const SizedBox(height: 12.0),
-          Card(
-            child: ListTile(
-              title: const Text('Notification Preferences'),
-              trailing: const Icon(Icons.arrow_forward_ios),
-              onTap: () {
-                // Navigate to notification preferences
-                print('Notification Preferences tapped');
-              },
-            ),
-          ),
-          const SizedBox(height: 12.0),
-          Card(
-            child: ListTile(
-              title: const Text('App Settings'),
-              trailing: const Icon(Icons.arrow_forward_ios),
-              onTap: () {
-                // Navigate to app settings
-                print('App Settings tapped');
-              },
-            ),
-          ),
-          const SizedBox(height: 12.0),
-          Card(
-            child: ListTile(
-              title: const Text('Help & Support'),
-              trailing: const Icon(Icons.arrow_forward_ios),
-              onTap: () {
-                // Navigate to help & support
-                print('Help & Support tapped');
-              },
-            ),
-          ),
+          // Card(
+          //   child: ListTile(
+          //     title: const Text('Language Preferences'),
+          //     trailing: const Icon(Icons.arrow_forward_ios),
+          //     onTap: () {
+          //       // Navigate to language preferences
+          //       print('Language Preferences tapped');
+          //     },
+          //   ),
+          // ),
+          // const SizedBox(height: 12.0),
+          // Card(
+          //   child: ListTile(
+          //     title: const Text('Notification Preferences'),
+          //     trailing: const Icon(Icons.arrow_forward_ios),
+          //     onTap: () {
+          //       // Navigate to notification preferences
+          //       print('Notification Preferences tapped');
+          //     },
+          //   ),
+          // ),
+          // const SizedBox(height: 12.0),
+          // Card(
+          //   child: ListTile(
+          //     title: const Text('App Settings'),
+          //     trailing: const Icon(Icons.arrow_forward_ios),
+          //     onTap: () {
+          //       // Navigate to app settings
+          //       print('App Settings tapped');
+          //     },
+          //   ),
+          // ),
+          // const SizedBox(height: 12.0),
+          // Card(
+          //   child: ListTile(
+          //     title: const Text('Help & Support'),
+          //     trailing: const Icon(Icons.arrow_forward_ios),
+          //     onTap: () {
+          //       // Navigate to help & support
+          //       print('Help & Support tapped');
+          //     },
+          //   ),
+          // ),
           SwitchListTile(
             title: const Text('Dark Mode'),
             value: isDark,
