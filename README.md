@@ -1,11 +1,7 @@
-Got it! Let's craft a polished and comprehensive `README.md` for your **NetConnect\_Client** Flutter project. Here’s a structured and formatted version that you can drop right into your repository:
-
-````markdown
 #  NetConnect Client (Flutter)
 
 **NetConnect Client** is the mobile front-end companion to the **NetConnect Server**. Built with **Flutter** (Dart), it enables real-time chat, group messaging, and file transfers through a sleek and user-friendly interface.
 
----
 
 ##  Features
 
@@ -23,7 +19,7 @@ Got it! Let's craft a polished and comprehensive `README.md` for your **NetConne
 - **Responsive UI**  
   - Intuitive design suitable for mobile devices
 
----
+
 
 ##  Tech Stack
 
@@ -33,19 +29,13 @@ Got it! Let's craft a polished and comprehensive `README.md` for your **NetConne
 | **Client App**| Flutter-based mobile application |
 | **Server**    | Communicates with FastAPI backend via REST & WebSockets |
 
----
-
 ##  Project Structure
 
-```text
 NetConnect_Client/
-├── screens/               # UI screens for authentication, chats, etc.
-├── main.dart              # App entry point
-├── server_config.dart     # Server URL and connection settings
-└── README.md              # Project documentation
-````
-
----
+- ├── screens/               # UI screens for authentication, chats, etc.
+- ├── main.dart              # App entry point
+- ├── server_config.dart     # Server URL and connection settings
+- └── README.md              # Project documentation
 
 ## Getting Started
 
@@ -58,10 +48,8 @@ NetConnect_Client/
 
 1. **Clone the repository**
 
-   ```bash
    git clone https://github.com/Abdoul2146/NetConnect_Client.git
    cd NetConnect_Client
-   ```
 
 2. **Configure server connection**
 
@@ -70,20 +58,16 @@ NetConnect_Client/
 
 3. **Install dependencies**
 
-   ```bash
    flutter pub get
-   ```
 
 4. **Run the app**
 
    * For Android/iOS:
 
-     ```bash
      flutter run
-     ```
+
    * Or open in your IDE (Android Studio, VS Code) and press **Run**
 
----
 
 ## Usage Flow
 
@@ -96,7 +80,6 @@ NetConnect_Client/
 3. **File Sharing**
    Attach files to chats and manage downloads seamlessly.
 
----
 
 ## Notes
 
@@ -104,7 +87,6 @@ NetConnect_Client/
 * Consider adding features like push notifications or dark mode in future versions.
 * Error handling (like connection drops) can be improved for better UX.
 
----
 
 ## Contributing
 
@@ -123,10 +105,20 @@ Creator of NetConnect — bringing seamless, real-time communication to your fin
 
 
 ###  Screenshots
-https://drive.google.com/file/d/1IMNWBRYQzrjrw4g5LS2WNFQ061jPX304/view?usp=drive_link
-https://drive.google.com/file/d/1BmK1uVPf91-6SMMS_TrdGlpCUmxf9PA8/view?usp=drive_link
-https://drive.google.com/file/d/1Bz8EkrQJ7M-a4C6x7OkVTqDDeWiiboZs/view?usp=drive_link
-https://drive.google.com/file/d/1-TENLzUYQyuQxTxCe1YbWACbP_Q_ljZ-/view?usp=drive_link
-https://drive.google.com/file/d/1dq2ev88UPXHYy2myLMqouNEWsNHuqWzD/view?usp=drive_link
-https://drive.google.com/file/d/1PtINbvq7oWaA2Af_np4GtxPtjyCd9cUe/view?usp=drive_link
-https://drive.google.com/file/d/1G0sNkKbiox4LlJAFbGRdoC6h2hbw-3BZ/view?usp=drive_link
+- Create Group
+![Create_group](<Netconnnect Screenshot/create group.jpg>)
+
+- Feed
+![Feed](<Netconnnect Screenshot/feed.jpg>)
+
+ - Home
+ ![Home](<Netconnnect Screenshot/Home.jpg>)
+ 
+- Inbox
+ ![Inbox](<Netconnnect Screenshot/inbox.jpg>)
+ 
+ - Profile
+  ![Profile](<Netconnnect Screenshot/profile.jpg>)
+
+- Settings
+![settings](<Netconnnect Screenshot/settings.jpg>)
