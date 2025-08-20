@@ -253,19 +253,14 @@ class _UsersScreenState extends State<UsersScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'NetConnect',
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-        ),
-        // centerTitle: true,
-        // backgroundColor: Colors.white,
-        // elevation: 1,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications, color: Colors.black),
-            onPressed: () {},
-          ),
-        ],
+        title: Text('NetConnect'),
+        centerTitle: false,
+        // actions: [
+        //   IconButton(
+        //     icon: const Icon(Icons.notifications, color: Colors.black),
+        //     onPressed: () {},
+        //   ),
+        // ],
       ),
       body:
           _isLoading
@@ -312,7 +307,8 @@ class _UsersScreenState extends State<UsersScreen> {
                           return Container(
                             margin: const EdgeInsets.symmetric(vertical: 6),
                             decoration: BoxDecoration(
-                              color: Colors.grey.shade200,
+                              color:
+                                  Theme.of(context).cardColor, // <-- USE THIS
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: ListTile(
@@ -343,8 +339,24 @@ class _UsersScreenState extends State<UsersScreen> {
                                     ),
                                 ],
                               ),
-                              title: Text(user.name),
-                              subtitle: Text(user.username),
+                              title: Text(
+                                user.name,
+                                style: TextStyle(
+                                  color:
+                                      Theme.of(
+                                        context,
+                                      ).textTheme.bodyLarge?.color,
+                                ),
+                              ),
+                              subtitle: Text(
+                                user.username,
+                                style: TextStyle(
+                                  color:
+                                      Theme.of(
+                                        context,
+                                      ).textTheme.bodyMedium?.color,
+                                ),
+                              ),
                               onTap: () {
                                 Navigator.push(
                                   context,

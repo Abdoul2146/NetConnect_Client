@@ -547,13 +547,9 @@ class _NoticeBoardPageState extends State<NoticeBoardPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Notice Board',
-          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
-        ),
-        // centerTitle: false,
-        // // backgroundColor: Colors.white,
-        // // elevation: 1,
+        title: Text('Notice Board'),
+        centerTitle: false,
+        elevation: 1,
       ),
       body:
           _isLoading

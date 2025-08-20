@@ -46,12 +46,27 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _token; // RETAINED: Token
   PlatformFile? _pendingFile;
   String? _pendingFileMimeType;
+  bool _showJumpToLatest = false;
   // REMOVED: Set<String> _activeUsers = {}; // Active users now managed by WebSocketProvider
 
   @override
   void initState() {
     super.initState();
     _initCredentialsAndConnect(); // RETAINED: Calls local WebSocket setup
+    _scrollController.addListener(_handleScroll);
+  }
+
+  void _handleScroll() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.position.pixels;
+    // Show FAB if not near the bottom (e.g., more than 100px away)
+    final shouldShow = (maxScroll - currentScroll) > 100;
+    if (_showJumpToLatest != shouldShow) {
+      setState(() {
+        _showJumpToLatest = shouldShow;
+      });
+    }
   }
 
   void _scrollToBottom() {
@@ -468,6 +483,7 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _channel?.sink.close(); // RETAINED: Close local WebSocket
     _controller.dispose();
+    _scrollController.removeListener(_handleScroll);
     super.dispose();
   }
 
@@ -548,7 +564,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 horizontal: 8.0,
               ),
               decoration: BoxDecoration(
-                color: m.isMe ? Colors.grey[300] : Colors.white,
+                color:
+                    m.isMe
+                        ? Theme.of(context).colorScheme.surfaceVariant
+                        : Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(8.0),
               ),
               child: ConstrainedBox(
@@ -773,7 +792,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   horizontal: 8.0,
                 ),
                 decoration: BoxDecoration(
-                  color: m.isMe ? Colors.grey[300] : Colors.white,
+                  color:
+                      m.isMe
+                          ? Theme.of(context).colorScheme.surfaceVariant
+                          : Theme.of(context).cardColor,
                   borderRadius: BorderRadius.circular(8.0),
                 ),
                 child: ConstrainedBox(
@@ -911,7 +933,10 @@ class _ChatScreenState extends State<ChatScreen> {
           padding: const EdgeInsets.all(8.0),
           margin: const EdgeInsets.symmetric(vertical: 4.0, horizontal: 8.0),
           decoration: BoxDecoration(
-            color: m.isMe ? Colors.grey[300] : Colors.white,
+            color:
+                m.isMe
+                    ? Theme.of(context).colorScheme.surfaceVariant
+                    : Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(8.0),
           ),
           child: ConstrainedBox(
@@ -983,7 +1008,12 @@ class _ChatScreenState extends State<ChatScreen> {
                             horizontal: 8.0,
                           ),
                           decoration: BoxDecoration(
-                            color: m.isMe ? Colors.grey[300] : Colors.white,
+                            color:
+                                m.isMe
+                                    ? Theme.of(
+                                      context,
+                                    ).colorScheme.surfaceVariant
+                                    : Theme.of(context).cardColor,
                             borderRadius: BorderRadius.circular(8.0),
                           ),
                           child: ConstrainedBox(
@@ -1094,7 +1124,13 @@ class _ChatScreenState extends State<ChatScreen> {
                     },
                   )
                 else ...[
-                  Text(m.text, style: const TextStyle(fontSize: 14)),
+                  Text(
+                    m.text,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                    ),
+                  ),
                   Row(
                     // Added Row for consistency with other status displays
                     mainAxisSize: MainAxisSize.min,
@@ -1250,6 +1286,7 @@ class _ChatScreenState extends State<ChatScreen> {
             decoration: BoxDecoration(
               border: Border(top: BorderSide(color: Colors.grey[300]!)),
             ),
+
             child: Row(
               children: [
                 Expanded(
@@ -1320,6 +1357,27 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
         ],
       ),
+      floatingActionButton:
+          _showJumpToLatest
+              ? Padding(
+                padding: const EdgeInsets.only(bottom: 80.0),
+                child: FloatingActionButton(
+                  mini: true,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  tooltip: 'Jump to latest',
+                  onPressed: () {
+                    if (_scrollController.hasClients) {
+                      _scrollController.animateTo(
+                        _scrollController.position.maxScrollExtent,
+                        duration: const Duration(milliseconds: 200),
+                        curve: Curves.easeOut,
+                      );
+                    }
+                  },
+                  child: const Icon(Icons.keyboard_double_arrow_down, size: 16),
+                ),
+              )
+              : null,
     );
   }
 
